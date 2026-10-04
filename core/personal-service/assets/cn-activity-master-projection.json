@@ -1258,25 +1258,21 @@
       "binary_path": "cn-activity-masters/hard_multi_event_quest.orderedmap",
       "row_count": 12,
       "root_key_count": 12,
-      "start_index": 7,
-      "end_index": 8,
+      "start_index": 5,
+      "end_index": 6,
       "time_indexes": [
         5,
         6
       ],
       "scalar_schedule_indexes": [
         5,
-        6,
-        7,
-        8
+        6
       ],
       "composite_schedule_indexes": [],
       "composite_schedules": [],
       "synchronized_field_indexes": [
         5,
-        6,
-        7,
-        8
+        6
       ],
       "parent_activity_master": "hard_multi_event",
       "quest_category": 26
@@ -1335,6 +1331,38 @@
       "synchronized_field_indexes": [],
       "parent_activity_master": "rush_event",
       "quest_category": 24
+    },
+    {
+      "name": "box_gacha_box",
+      "activity_id_prefix": "box-gacha:",
+      "logical_path": "master/box_gacha/box.orderedmap",
+      "entry_path": "production/upload/63/07ee65542d68ef1be95ec6076bcd1397fa3ac9",
+      "source_archive": "archive-common-diff/pinball-1.4.47-1.4.48-1-74436299.zip",
+      "binary_path": "cn-activity-masters/box_gacha_box.orderedmap",
+      "row_count": 269,
+      "root_key_count": 48,
+      "start_index": 13,
+      "end_index": 14,
+      "time_indexes": [
+        13,
+        14
+      ],
+      "scalar_schedule_indexes": [
+        13,
+        14
+      ],
+      "composite_schedule_indexes": [],
+      "composite_schedules": [],
+      "synchronized_field_indexes": [
+        13,
+        14
+      ],
+      "parent_activity_master": "box_gacha",
+      "quest_category": null,
+      "source_byte_length": 43709,
+      "source_entity_digest": "dCFMjkl4B_xVPtHtXsFQWd7rW0cEb5G7GVcKG4F7KJ0",
+      "source_version": "1.4.48",
+      "source_asset_kind": "common"
     }
   ],
   "references": {
@@ -1538,6 +1566,11 @@
       "name": "rush_event_quest_folder",
       "encodedByteLength": 9206,
       "sourceByteLength": 9164
+    },
+    {
+      "name": "box_gacha_box",
+      "encodedByteLength": 43709,
+      "sourceByteLength": 43709
     }
   ],
   "archive_contract": {
@@ -1581,7 +1614,8 @@
       "production/upload/41/9dc963835f4c7c08292e9f098baf6240e2b2d2",
       "production/upload/8a/b96162f1210de71fafa87333abe257dc619183",
       "production/upload/7f/4ae97c1469441250943eae654fe5e68eaaa64b",
-      "production/upload/e6/e407d1adb48131eaefdf5ec32208f3d4f46910"
+      "production/upload/e6/e407d1adb48131eaefdf5ec32208f3d4f46910",
+      "production/upload/63/07ee65542d68ef1be95ec6076bcd1397fa3ac9"
     ]
   }
 }

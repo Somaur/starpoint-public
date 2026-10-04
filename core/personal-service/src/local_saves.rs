@@ -20,6 +20,7 @@ use serde_json::Value;
 
 mod automation;
 mod encryption;
+mod maintenance;
 mod recovery;
 mod remote_target;
 mod routes;

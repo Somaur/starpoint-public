@@ -148,10 +148,24 @@ pub(super) fn shop_purchase_limits(
 ) -> Result<ShopPurchaseLimits, PersonalServiceError> {
     let limits = SHOP_LIMITS
         .get_or_init(|| {
-            serde_json::from_str::<BTreeMap<String, BTreeMap<String, ShopPurchaseLimits>>>(
+            let mut limits = serde_json::from_str::<BTreeMap<String, BTreeMap<String, ShopPurchaseLimits>>>(
                 SHOP_LIMITS_ASSET,
             )
-            .map_err(|error| format!("failed to decode CN shop limits: {error}"))
+            .map_err(|error| format!("failed to decode CN shop limits: {error}"))?;
+            #[derive(Deserialize)]
+            struct ManaShopManifest {
+                limits: BTreeMap<String, i64>,
+            }
+            let manifest: ManaShopManifest = serde_json::from_str(include_str!(
+                "../../assets/cn-mana-shop-master/manifest.json"
+            ))
+            .map_err(|error| format!("failed to decode CN mana shop limits: {error}"))?;
+            for (id, maximum) in manifest.limits {
+                let limit = limits.get_mut("2").and_then(|rows| rows.get_mut(&id))
+                    .ok_or_else(|| format!("missing CN mana shop limit: {id}"))?;
+                limit.buy_max_count = Some(maximum);
+            }
+            Ok(limits)
         })
         .as_ref()
         .map_err(|error| PersonalServiceError::new(error.clone()))?;

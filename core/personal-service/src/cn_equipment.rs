@@ -349,6 +349,7 @@ fn upgrade(
                 Value::Array(mission_delta.mission_info),
             );
     }
+    crate::cn_mission::sync_reward_response(&mut response, &player_data, server_time);
     msgpack_response_at(body.viewer_id, false, server_time, response)
 }
 
@@ -421,7 +422,7 @@ fn add_item(
     Ok(())
 }
 
-fn serialize_equipment(equipment_id: i64, equipment: &Map<String, Value>) -> Value {
+pub(crate) fn serialize_equipment(equipment_id: i64, equipment: &Map<String, Value>) -> Value {
     json!({
         "equipment_id": equipment_id,
         "protection": equipment.get("protection").and_then(Value::as_bool).unwrap_or(false),

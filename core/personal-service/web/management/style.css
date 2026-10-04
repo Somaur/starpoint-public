@@ -406,6 +406,20 @@ main {
   flex-direction: column;
 }
 
+.management-dialog {
+  width: min(32rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  border: 0;
+  border-radius: 1rem;
+  padding: 1.5rem;
+  color: var(--ink, #17212d);
+  box-shadow: 0 1rem 4rem #0004;
+}
+
+.management-dialog::backdrop { background: #152c3e99; }
+.dialog-message { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
+.dialog-actions { display: flex; gap: 0.8rem; justify-content: flex-end; }
+
 label {
   display: grid;
   min-width: 0;

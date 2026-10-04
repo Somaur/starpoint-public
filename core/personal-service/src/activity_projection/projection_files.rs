@@ -74,6 +74,9 @@ pub(super) fn atomic_write_json<T: Serialize>(
 // //// 绑定生成的 CN 活动 master 原始种子 [@x380kkm 2026-08-29] ////
 pub(super) fn master_seed(name: &str) -> Option<&'static [u8]> {
     Some(match name {
+        "box_gacha_box" => {
+            include_bytes!("../../assets/cn-activity-masters/box_gacha_box.orderedmap")
+        }
         "event_list" => include_bytes!("../../assets/cn-activity-masters/event_list.orderedmap"),
         "advent_event" => {
             include_bytes!("../../assets/cn-activity-masters/advent_event.orderedmap")

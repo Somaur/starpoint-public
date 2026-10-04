@@ -1,0 +1,752 @@
+{
+  "url": "https://github.com/Somaur/starpoint-public/releases/download/distribution-inputs-v1/starpoint-comics-20261004.zip",
+  "bytes": 144169505,
+  "sha256": "59c1f43a8e4107c03a682f83d337b316e6a6c418c0c3eca65c5b2bc885d67892",
+  "files": [
+    {
+      "path": "local-comics/catalog.json",
+      "bytes": 3182,
+      "sha256": "b6bde26e2f45099e0aba0552b2c58cb047f2857e877e38857f357cdc757f92a0"
+    },
+    {
+      "path": "local-comics/0/1/base.png",
+      "bytes": 2189544,
+      "sha256": "41c2d5b600b737cd39f91b349caa9919c3bd88ef9fdb7758e0b87d4efd8db1c7"
+    },
+    {
+      "path": "local-comics/0/1/large.png",
+      "bytes": 451418,
+      "sha256": "53803ceeefb6a77c786fe9d1ef4dedd667ceb26fe2f7593d0385e50f4459a1bd"
+    },
+    {
+      "path": "local-comics/0/1/small.png",
+      "bytes": 81804,
+      "sha256": "93c0067132229e37aa01aa3bfbd6c415186fba9fcd5574f8a0c56bc40a2f2949"
+    },
+    {
+      "path": "local-comics/0/2/base.png",
+      "bytes": 2153243,
+      "sha256": "5bcba73279012cc4a94c06f6d7712dbbbde39fbf3e5b17b4f1f3e830ee6b37f1"
+    },
+    {
+      "path": "local-comics/0/2/large.png",
+      "bytes": 538973,
+      "sha256": "2c3d62801bd862afe32db9eedfd2ccbe6f1272821c8ad0af2b57b5889c733502"
+    },
+    {
+      "path": "local-comics/0/2/small.png",
+      "bytes": 96923,
+      "sha256": "84edec50725533cbccfd7961f0307057b8405e1a5570038077fbc18d9b817147"
+    },
+    {
+      "path": "local-comics/0/3/base.png",
+      "bytes": 1890930,
+      "sha256": "2fafffd15f328f236e6fc160150f057aeeb9260b3d09807dad203b1a8aba267f"
+    },
+    {
+      "path": "local-comics/0/3/large.png",
+      "bytes": 388613,
+      "sha256": "c7f581599d323ff9d2ea04c878dce9223fa72b3e040803c1d77da1988ebbb19e"
+    },
+    {
+      "path": "local-comics/0/3/small.png",
+      "bytes": 76682,
+      "sha256": "e03255506e7e501dc36d7735a87569d7fcd4596b4532bcc5e3dc6250c173542b"
+    },
+    {
+      "path": "local-comics/0/4/base.png",
+      "bytes": 2512259,
+      "sha256": "a4d6a195796ba0dc341c740e0e7df0386acf30c5b29ca5f7947b1048cc724a1a"
+    },
+    {
+      "path": "local-comics/0/4/large.png",
+      "bytes": 370909,
+      "sha256": "513a4edd0cede22c4b1026bfda1ea2d5b054403e4bc1c1aef8e9a01571904547"
+    },
+    {
+      "path": "local-comics/0/4/small.png",
+      "bytes": 68581,
+      "sha256": "87b7abd1668c0a5a1b87b514a8f0836e2cdefd73f9dd42996b6125538375caa0"
+    },
+    {
+      "path": "local-comics/0/5/base.png",
+      "bytes": 2199592,
+      "sha256": "79dedf5696330366ad834a276ce38c584eaec3a442aae0145828d06b2e66732a"
+    },
+    {
+      "path": "local-comics/0/5/large.png",
+      "bytes": 368912,
+      "sha256": "9afd789d2cfb7380201f0bfd8427b61aa869c4760c1f48e46269a5798601de0e"
+    },
+    {
+      "path": "local-comics/0/5/small.png",
+      "bytes": 68673,
+      "sha256": "56efeb91641a2871ec92c5998bd71a7e9bd89df9c604d6ff8e6e882d371f3571"
+    },
+    {
+      "path": "local-comics/0/6/base.png",
+      "bytes": 1880579,
+      "sha256": "1a8055ec5f81bf69ed15745bebbb0fd42cba3384bfb9935a05524071a6973f37"
+    },
+    {
+      "path": "local-comics/0/6/large.png",
+      "bytes": 443191,
+      "sha256": "a65f68228aabc8776900a230d12ea9f33d1c6cff166e4ff586284c4e178d03fd"
+    },
+    {
+      "path": "local-comics/0/6/small.png",
+      "bytes": 86748,
+      "sha256": "42924e01506e5e099a3f41b735f6f1aef053d804a15f10cd3d941cbeb1dfa068"
+    },
+    {
+      "path": "local-comics/0/7/base.png",
+      "bytes": 1912729,
+      "sha256": "e98ac0c3c2d1617dc738cc3871dd1442b29d418f516f9ff46d916b7be0bb9eaf"
+    },
+    {
+      "path": "local-comics/0/7/large.png",
+      "bytes": 430575,
+      "sha256": "ef4b0f2db98c82f52d35e602e57d5b319aedf7753bbd5552bc19c639bd6ea4ba"
+    },
+    {
+      "path": "local-comics/0/7/small.png",
+      "bytes": 80426,
+      "sha256": "4abe825c4807cd9075ccff5a253652f8e3d59858a9474b90af59975875678293"
+    },
+    {
+      "path": "local-comics/0/8/base.png",
+      "bytes": 2182548,
+      "sha256": "ffcd4c28dad9bc55ed073f82e4b8dd48721a89333079e49fcbdaeb614162826e"
+    },
+    {
+      "path": "local-comics/0/8/large.png",
+      "bytes": 457243,
+      "sha256": "90a8457469d7f00d80a253140909e8630d8ab9741db671964eccada1ee00e1ad"
+    },
+    {
+      "path": "local-comics/0/8/small.png",
+      "bytes": 83461,
+      "sha256": "39dd6fb7571864a6fec5d63dd59508391a0fcc70979d8371b609fb57f97043f4"
+    },
+    {
+      "path": "local-comics/0/9/base.png",
+      "bytes": 2128032,
+      "sha256": "8d70f7bee634d03d89294472bcea1b04265ceddca6584c12779e20bbfe29d6ef"
+    },
+    {
+      "path": "local-comics/0/9/large.png",
+      "bytes": 520905,
+      "sha256": "3d606b001bc78b327a0d06a080e688e93f2613447fed90923ba5614224ed434e"
+    },
+    {
+      "path": "local-comics/0/9/small.png",
+      "bytes": 94330,
+      "sha256": "7ed0bd499ffdafb39ad49047113e9a4652c2a726efac3ef754b6ca4d1ab88eab"
+    },
+    {
+      "path": "local-comics/0/10/base.png",
+      "bytes": 1934274,
+      "sha256": "7be779b689eb23fdfc4d88a7856c2215ddaf298564fb03e6ff23c5c619a376d1"
+    },
+    {
+      "path": "local-comics/0/10/large.png",
+      "bytes": 451230,
+      "sha256": "7e28369ef0ec03d6e826347054f62946404bf19cc29cf815478e349dfd3e2b1d"
+    },
+    {
+      "path": "local-comics/0/10/small.png",
+      "bytes": 83832,
+      "sha256": "aa021e3f0b70937f2203c98c4f2e3d4a6aa4a8c23101599ea4cc9faa9bdcb7ab"
+    },
+    {
+      "path": "local-comics/0/11/base.png",
+      "bytes": 2456399,
+      "sha256": "c4dc58e682bd905e1945adc119ecc3e0a16d54e5f0b3dd8898baea75bfe68112"
+    },
+    {
+      "path": "local-comics/0/11/large.png",
+      "bytes": 490607,
+      "sha256": "494163b2f37d77d619b65f5783262dee06f57654ab613b5666d8f1dd231fdb4a"
+    },
+    {
+      "path": "local-comics/0/11/small.png",
+      "bytes": 90365,
+      "sha256": "d00b55450983685ae3aca46219cdaee5357d854d681305725a18927a31be2368"
+    },
+    {
+      "path": "local-comics/0/12/base.png",
+      "bytes": 3256228,
+      "sha256": "3d1911db5aee2402191abb77abf30ae1b46d35c5d059d8b7d9002caf693e47c1"
+    },
+    {
+      "path": "local-comics/0/12/large.png",
+      "bytes": 499869,
+      "sha256": "266a442336316a38d948b9198543c5efa7c879af281e4fe37c4d55588e791f1c"
+    },
+    {
+      "path": "local-comics/0/12/small.png",
+      "bytes": 91832,
+      "sha256": "fee8483301f128bd7da92c7e15b7634d3441a2adb78d0816ce77aca772a60f4d"
+    },
+    {
+      "path": "local-comics/0/13/base.png",
+      "bytes": 2845958,
+      "sha256": "f0775616b124779286ecd173b3900f4c19bfaf29bc3e9b4a0bc5cfd73d3ac53d"
+    },
+    {
+      "path": "local-comics/0/13/large.png",
+      "bytes": 543243,
+      "sha256": "018d24a43a05744ee3ce5e72701614299ec9e08c80d08db4a7e6dace7c12894e"
+    },
+    {
+      "path": "local-comics/0/13/small.png",
+      "bytes": 88077,
+      "sha256": "fb20894c168163f9aaeb0180ee0c4ea39e2e69833adc929302f1833551d20c2e"
+    },
+    {
+      "path": "local-comics/0/14/base.png",
+      "bytes": 2543888,
+      "sha256": "86915b8ad0f8ad71ca0a168c06bcb609cdbe95c747c9f053c573ba6f5d57ace5"
+    },
+    {
+      "path": "local-comics/0/14/large.png",
+      "bytes": 446616,
+      "sha256": "beea5b4cf9178fc4fb5cfc0be757111cbae82e89acb94ae246a678d04c650151"
+    },
+    {
+      "path": "local-comics/0/14/small.png",
+      "bytes": 82725,
+      "sha256": "7cf6c46a222f6ce5489c051957f7b5e83dae1910abd383d231b9e5d64eaafb7e"
+    },
+    {
+      "path": "local-comics/0/15/base.png",
+      "bytes": 2548325,
+      "sha256": "a454c8986c3dc3bb0a090f605a3ae1251ba3969814087788907df768a50284ae"
+    },
+    {
+      "path": "local-comics/0/15/large.png",
+      "bytes": 538872,
+      "sha256": "a21632b807fad3887296b37fca51a618ee6260ca05b26ba01a8e68037dcbf6b6"
+    },
+    {
+      "path": "local-comics/0/15/small.png",
+      "bytes": 93495,
+      "sha256": "2a9e7a46fd28f556e8c5568721c55474649311ae75d070031295634f3e849b56"
+    },
+    {
+      "path": "local-comics/0/16/base.png",
+      "bytes": 3022597,
+      "sha256": "2bd0867f6f869f1687e1f31058756789b0024ba31740b096622841634838928c"
+    },
+    {
+      "path": "local-comics/0/16/large.png",
+      "bytes": 583853,
+      "sha256": "cc40e9151ddbdb14e21c1f97cd0148919836c6a096ed022f95a96008f3479db9"
+    },
+    {
+      "path": "local-comics/0/16/small.png",
+      "bytes": 99647,
+      "sha256": "45846f6021adbdff2d1f6528930e9d001be19305e8a5d263206e37d5393387c4"
+    },
+    {
+      "path": "local-comics/0/17/base.png",
+      "bytes": 2941624,
+      "sha256": "69d458719336be28304561c545ce8608abdbe8b119cade3b8fe66cf449defaba"
+    },
+    {
+      "path": "local-comics/0/17/large.png",
+      "bytes": 525414,
+      "sha256": "bcdb4f2ed5ad48c7c2e23c77b4007675b5da81a765cfe1c340ce4b6002a2bb47"
+    },
+    {
+      "path": "local-comics/0/17/small.png",
+      "bytes": 88485,
+      "sha256": "5ee8fe14afdf31b18980e71cc435b179a6dd4c286f3c8dc76e70804bfa99c3a9"
+    },
+    {
+      "path": "local-comics/0/18/base.png",
+      "bytes": 3097001,
+      "sha256": "570ac1372b31cd080d2c37f3fad8a0f707baa3d6e5a7ed64ec2f1cc91af1f129"
+    },
+    {
+      "path": "local-comics/0/18/large.png",
+      "bytes": 644872,
+      "sha256": "8d0e328e6a500aa9dea467bf1bea1c17ffe7d834b3a89595ef090eb530faa758"
+    },
+    {
+      "path": "local-comics/0/18/small.png",
+      "bytes": 94303,
+      "sha256": "8fd1d7ef31d5008aed2448df3566db568b06a98c58250f31ead69e2d02ac46a8"
+    },
+    {
+      "path": "local-comics/0/19/base.png",
+      "bytes": 2781871,
+      "sha256": "1c2e68f9a5d1724b94d48fd66e7b0b9b1aee78f53674efe16f1adbc95bcf9c96"
+    },
+    {
+      "path": "local-comics/0/19/large.png",
+      "bytes": 375591,
+      "sha256": "0c2d21d4711285ea62208b3c23102e1fdb01eb7cc3a51988f0be3c741ee14b64"
+    },
+    {
+      "path": "local-comics/0/19/small.png",
+      "bytes": 79384,
+      "sha256": "75d64022577281611b7c984b40be7741d5dbd81a99bc454f4b6967501faa3bd6"
+    },
+    {
+      "path": "local-comics/0/20/base.png",
+      "bytes": 3098647,
+      "sha256": "ccbddca23a86f645a704a1f2a300f0916a0ae3d9b8193df4f741a211a668d212"
+    },
+    {
+      "path": "local-comics/0/20/large.png",
+      "bytes": 397095,
+      "sha256": "0b80e159ea394f062553a0040bdef1d8613dbb95f65da075376f5de8f77736d0"
+    },
+    {
+      "path": "local-comics/0/20/small.png",
+      "bytes": 77030,
+      "sha256": "d73be96433aeae2fd588a1ae40fcdce4d7892aea67f2292a3a85a50063173c40"
+    },
+    {
+      "path": "local-comics/0/21/base.png",
+      "bytes": 3093899,
+      "sha256": "b517c363162ea219c7f8b6915da31a8a8bd8c5c4b15721143f927333dacd8407"
+    },
+    {
+      "path": "local-comics/0/21/large.png",
+      "bytes": 539743,
+      "sha256": "17afc3ca246e15d2cf59e639cbeab247f4c8e177b825e49292c972c547f34ffa"
+    },
+    {
+      "path": "local-comics/0/21/small.png",
+      "bytes": 69539,
+      "sha256": "85058a4894bef87ba379d952b0492b95f75f78165ff7383b50f4306b10e933a0"
+    },
+    {
+      "path": "local-comics/0/22/base.png",
+      "bytes": 2698020,
+      "sha256": "7e8e4a4ffdccdeae66f7b59ed0e41ccc69cfade200c4eb79eb3ed71e4f8d8ba2"
+    },
+    {
+      "path": "local-comics/0/22/large.png",
+      "bytes": 605348,
+      "sha256": "95dc6490c47148d6777c09d650da9cd2849f287fcc34fd52ad41eb4acb9d8964"
+    },
+    {
+      "path": "local-comics/0/22/small.png",
+      "bytes": 95381,
+      "sha256": "76eb1f553e16e2256c2f193fea7255a5e3134e7fdd58121ac5618249dcf5dfc4"
+    },
+    {
+      "path": "local-comics/0/23/base.png",
+      "bytes": 3084649,
+      "sha256": "6753417d1ee39683252923ac719c5c678d9c3568788c83696438e74e080e43e9"
+    },
+    {
+      "path": "local-comics/0/23/large.png",
+      "bytes": 557763,
+      "sha256": "1906067fcfcaebfefe24c1169f6ef54016ce6e5f1d0b94e1c13cdd15e262ebf4"
+    },
+    {
+      "path": "local-comics/0/23/small.png",
+      "bytes": 107118,
+      "sha256": "bc9ed8b071765a9fd5b537d5616764881ad2c8b47d0dc14f54e24878b157912a"
+    },
+    {
+      "path": "local-comics/0/24/base.png",
+      "bytes": 2910705,
+      "sha256": "7d387542b8121dc61af6d568394da9bd03a40a1ae695837aa194560f5bf6bf28"
+    },
+    {
+      "path": "local-comics/0/24/large.png",
+      "bytes": 568315,
+      "sha256": "0d29d05e796c96fe68f2e76912ef2d7b121d955a27f25f5115d44518a8593cfe"
+    },
+    {
+      "path": "local-comics/0/24/small.png",
+      "bytes": 101134,
+      "sha256": "d85fcd85e8030fdac6ac0c60ce2641841cd03b446f51c720d72f43fec0fb4fbf"
+    },
+    {
+      "path": "local-comics/0/25/base.png",
+      "bytes": 3005761,
+      "sha256": "840f8065797f5dcca1f359b87b4ca9381342f49a5b9cff06aabf95abafb90f06"
+    },
+    {
+      "path": "local-comics/0/25/large.png",
+      "bytes": 633916,
+      "sha256": "509994cc0064fddb2182038ff13904c335db7c2addca8ffd705a19f5b58bad2d"
+    },
+    {
+      "path": "local-comics/0/25/small.png",
+      "bytes": 76700,
+      "sha256": "3f6af978b6b4f51746491b5e989ead63e57e8128e869bff4f537168c846fc962"
+    },
+    {
+      "path": "local-comics/0/26/base.png",
+      "bytes": 3390253,
+      "sha256": "089240f9bc456d841a8381420ecf6c01e228a3aae1437272cffbf88b3a64e45f"
+    },
+    {
+      "path": "local-comics/0/26/large.png",
+      "bytes": 652973,
+      "sha256": "0e477d8ab05846f98f6bedd37d200f6dd43625139d320d5d9f0f6bca1b9a322f"
+    },
+    {
+      "path": "local-comics/0/26/small.png",
+      "bytes": 119185,
+      "sha256": "42db371b096c0f7c86c7107dd617defd3ac6cd19c8c3294fbf391ef379673e49"
+    },
+    {
+      "path": "local-comics/0/27/base.png",
+      "bytes": 2546920,
+      "sha256": "762716cd334669c8a553d6756d7a6c2e15315c420d365735a152fe60f6ccdd24"
+    },
+    {
+      "path": "local-comics/0/27/large.png",
+      "bytes": 436365,
+      "sha256": "3c0f3c8d9122789be3bb5c75d0d31a3f4ddd83e25dc0833ba61f245cc9d88592"
+    },
+    {
+      "path": "local-comics/0/27/small.png",
+      "bytes": 88587,
+      "sha256": "86f5e8524961543cfda4c6a257fe5ff5c4db19c1b8f3e1e6a43f592cfdb0cdfa"
+    },
+    {
+      "path": "local-comics/0/28/base.png",
+      "bytes": 2603855,
+      "sha256": "e9fc32065e1143217fd9793abfb63e9b24cafd6fd391309bacaaef94bc3880ad"
+    },
+    {
+      "path": "local-comics/0/28/large.png",
+      "bytes": 621035,
+      "sha256": "bafa79201b6e468ab704caa5cedc195a254dc5e6572ced282e9c49e804ec2dfa"
+    },
+    {
+      "path": "local-comics/0/28/small.png",
+      "bytes": 105400,
+      "sha256": "53590f9b46ac75564cd75928ec4e9670e9068fea3d01b1a1de5e5f021af5f826"
+    },
+    {
+      "path": "local-comics/0/29/base.png",
+      "bytes": 2732412,
+      "sha256": "5ee1c3b6121e07cc36bb67403b994276d6997d6831806b5c5ba394daaf69b16d"
+    },
+    {
+      "path": "local-comics/0/29/large.png",
+      "bytes": 435279,
+      "sha256": "0d0a30ace19aef4cac9547e35a922f5b1f97432d9c68b809db2191b75c3de512"
+    },
+    {
+      "path": "local-comics/0/29/small.png",
+      "bytes": 78113,
+      "sha256": "66075a9414ed705895e9e1f56afff4848dbbdc9d36c3bfa095654e804bad3476"
+    },
+    {
+      "path": "local-comics/0/30/base.png",
+      "bytes": 2980290,
+      "sha256": "a4126d8274ded90188ba0aafcca9e0bbf9dad45c4a3e37d562894cfaf1266977"
+    },
+    {
+      "path": "local-comics/0/30/large.png",
+      "bytes": 542635,
+      "sha256": "a30e0519c2c830c021afe860f0b99be910867a94f70b67f8f69943c9f19e709f"
+    },
+    {
+      "path": "local-comics/0/30/small.png",
+      "bytes": 109485,
+      "sha256": "905e740c25bd71c8cc704d73a87d458a5c4e9bdc59cdea025860623219c14f42"
+    },
+    {
+      "path": "local-comics/0/31/base.png",
+      "bytes": 2554640,
+      "sha256": "2ab3650c9e953fd76acf3779e8b529809d5660859cba9cf0aee42571eaed0f06"
+    },
+    {
+      "path": "local-comics/0/31/large.png",
+      "bytes": 505947,
+      "sha256": "79a6be23e70b683797406fa3c32d7ac269988b32d5ca807bb40d939c70924c71"
+    },
+    {
+      "path": "local-comics/0/31/small.png",
+      "bytes": 87359,
+      "sha256": "23fe264fcdc84ff0b5f12b622ff5b10cc6469b3556a305827293189f058bd3ea"
+    },
+    {
+      "path": "local-comics/0/32/base.png",
+      "bytes": 2849528,
+      "sha256": "56cb0695c9793bc622c63a2151f28c1b9edc2d2b0c01afd2ffbbac15147b0e9d"
+    },
+    {
+      "path": "local-comics/0/32/large.png",
+      "bytes": 535066,
+      "sha256": "536d1ff5db6cd311424104dc3ba05918d9496f97a88bc863734d68f466ce342f"
+    },
+    {
+      "path": "local-comics/0/32/small.png",
+      "bytes": 84691,
+      "sha256": "e6c53ca27bc7dd3be3f22f20007e922d4c9908acf139a16443b196cc3a89bb5e"
+    },
+    {
+      "path": "local-comics/0/33/base.png",
+      "bytes": 2935629,
+      "sha256": "c218f61df3f6b37ebd9d2fcfa698a4a0cc366a96aa99a88f885e1c3bce1bf205"
+    },
+    {
+      "path": "local-comics/0/33/large.png",
+      "bytes": 546441,
+      "sha256": "3296e499eea9d7123873e2bbbb32e1ca10101ac2bc19e676df5b95391ddc99b7"
+    },
+    {
+      "path": "local-comics/0/33/small.png",
+      "bytes": 106347,
+      "sha256": "3e2d33a263d114067967f65a282c23a97951411e700bd8554e97f27049be53bd"
+    },
+    {
+      "path": "local-comics/0/34/base.png",
+      "bytes": 2625586,
+      "sha256": "52cc5d1528b48d2c9c90b88516151c1e6a626bbea8299498170ac1a987571426"
+    },
+    {
+      "path": "local-comics/0/34/large.png",
+      "bytes": 370078,
+      "sha256": "c924a5ab0906aa52ee324687890fb75a859c16f18826ca6402ed69309a4d0d71"
+    },
+    {
+      "path": "local-comics/0/34/small.png",
+      "bytes": 75566,
+      "sha256": "1ecf727b82d4c443c4d5ea7c06927335abedf1bd0bf2dc101563c69f4dd7916d"
+    },
+    {
+      "path": "local-comics/0/35/base.png",
+      "bytes": 2624635,
+      "sha256": "4131491a382bb0ae9ec63361798b972ed9f8da173503425198d469b79e6be0a4"
+    },
+    {
+      "path": "local-comics/0/35/large.png",
+      "bytes": 427131,
+      "sha256": "fc1c6017bdee7e80f5ef39eda97bf76e5cd63752f5026cbeff868472f71bdaf9"
+    },
+    {
+      "path": "local-comics/0/35/small.png",
+      "bytes": 75098,
+      "sha256": "73fc8fb35eccd0103287bea8a981c111121323322b3f04bfdcb605ba035b722d"
+    },
+    {
+      "path": "local-comics/0/36/base.png",
+      "bytes": 2862834,
+      "sha256": "6c574a233d18809ccb518c87960311d537ee6af592ce0060a7ed64e2934401a7"
+    },
+    {
+      "path": "local-comics/0/36/large.png",
+      "bytes": 552022,
+      "sha256": "3dfecae5f00d508303cdba6e5f2cbac48e9a507a0fb1391db6ddef38194bf005"
+    },
+    {
+      "path": "local-comics/0/36/small.png",
+      "bytes": 100139,
+      "sha256": "782f0d949b6b2fcbf1234f5e0d5e172036a9d4cfe50dcfc9e0ade14c8672a11b"
+    },
+    {
+      "path": "local-comics/1/1/base.png",
+      "bytes": 1890172,
+      "sha256": "5588c450b3fc2ae7bcf1d68ffe3fd137873f39c004d9ad28690c8e6b51dcccc6"
+    },
+    {
+      "path": "local-comics/1/1/large.png",
+      "bytes": 285491,
+      "sha256": "0bd9edc6748a31896ecdc2460904c2a746b800f0c7b4528c26db15a1b2b33b9e"
+    },
+    {
+      "path": "local-comics/1/1/small.png",
+      "bytes": 42373,
+      "sha256": "886956308f06f0161dea57328d9de6b2955a572f5e2f5529efd7b3f9474db61d"
+    },
+    {
+      "path": "local-comics/1/2/base.png",
+      "bytes": 2308664,
+      "sha256": "b3d1d715434cdf681f0c97205f2a1074926a83fce53e4db38fe18c2b0ebf24d4"
+    },
+    {
+      "path": "local-comics/1/2/large.png",
+      "bytes": 271403,
+      "sha256": "e8aff84f1e08adc1107548cb601c358e9b1b593ac32c8c38554b770dcebba606"
+    },
+    {
+      "path": "local-comics/1/2/small.png",
+      "bytes": 41700,
+      "sha256": "f26b0c311873ad2a5b91871d9b8995f1ff4162c0f8fb8e1d600b613dd4b04bb8"
+    },
+    {
+      "path": "local-comics/1/3/base.png",
+      "bytes": 2112213,
+      "sha256": "576e62d124603502c114c59334fefbe3a7877e02368fac18b7cf66e6f366aada"
+    },
+    {
+      "path": "local-comics/1/3/large.png",
+      "bytes": 365151,
+      "sha256": "d0d1088830b3d8a907fae5e09198152a2a01ad4339ea80015586e8b4df52d7f7"
+    },
+    {
+      "path": "local-comics/1/3/small.png",
+      "bytes": 44513,
+      "sha256": "f57c692099ca98bff33d587cb1bc651c967d8bce67bbd96c386e783a9b49cf54"
+    },
+    {
+      "path": "local-comics/1/4/base.png",
+      "bytes": 2441470,
+      "sha256": "767486c0160fbf6daccbeb872ca2a31db2f61bdedfa50c1d9624936ba7ee52ec"
+    },
+    {
+      "path": "local-comics/1/4/large.png",
+      "bytes": 544625,
+      "sha256": "f579224336420d66b1fb70e7c5d18af0fcfe80412430c440d9e8b1d706157c83"
+    },
+    {
+      "path": "local-comics/1/4/small.png",
+      "bytes": 114224,
+      "sha256": "3fdcb7def972e25e924c00afb142f086a18c379bf869a230b524fa172a9185f4"
+    },
+    {
+      "path": "local-comics/1/5/base.png",
+      "bytes": 2065047,
+      "sha256": "cd26c27ddb23e346525e57117a976a24015503e7854011e770232f9df78d9fe0"
+    },
+    {
+      "path": "local-comics/1/5/large.png",
+      "bytes": 400326,
+      "sha256": "212305bbf471bed6be6532e5327dc63c8611ed1f7787f587aa05032f8ce74e73"
+    },
+    {
+      "path": "local-comics/1/5/small.png",
+      "bytes": 79961,
+      "sha256": "f22332a59be0e9f3ea101578a03e6b85dd765394f6551b83439a199124441539"
+    },
+    {
+      "path": "local-comics/1/6/base.png",
+      "bytes": 1779870,
+      "sha256": "5fee596b6c2737f17f5359b884c2991bddc03033a0079aa408dbb67d4cc422ba"
+    },
+    {
+      "path": "local-comics/1/6/large.png",
+      "bytes": 163960,
+      "sha256": "43637bc25d102b14f5bec5e5da0106e422f118947f6085dfab92f2f9197a3b2f"
+    },
+    {
+      "path": "local-comics/1/6/small.png",
+      "bytes": 25274,
+      "sha256": "7542847b3d8967a8f3e77b11c93f1202dc7505f7012ea9adfd66737587cf382c"
+    },
+    {
+      "path": "local-comics/1/7/base.png",
+      "bytes": 2116421,
+      "sha256": "d633931b7bf46df3542713729ea1544d930eb87296d76154f69a96ee4ca40718"
+    },
+    {
+      "path": "local-comics/1/7/large.png",
+      "bytes": 697926,
+      "sha256": "c9eea029d723fcff1fb7077c86486084f4efeda6b2935597695f9e49b2a3e002"
+    },
+    {
+      "path": "local-comics/1/7/small.png",
+      "bytes": 115603,
+      "sha256": "c650e53fb302c2a8bd94d1f074c2a3b391fa71591521adab75e1539b1f6ad2d6"
+    },
+    {
+      "path": "local-comics/1/8/base.png",
+      "bytes": 1968761,
+      "sha256": "25e02893ac7212fd89fef310f8224fefc6e1b6e7768bf039d177ed6d4b7128d7"
+    },
+    {
+      "path": "local-comics/1/8/large.png",
+      "bytes": 523652,
+      "sha256": "26180105177b46a25805e2eb8affcc448010cdeb0cd6f27b56b95dec515daafb"
+    },
+    {
+      "path": "local-comics/1/8/small.png",
+      "bytes": 88633,
+      "sha256": "4d965251b1ac4f59b2f6ae0786ddb74886eada951236b770a3b6163751309465"
+    },
+    {
+      "path": "local-comics/1/9/base.png",
+      "bytes": 1774135,
+      "sha256": "4f6edd69d22913fd6d83d23eda995f4fde8ac52ef8fc24878ee78b0b7e642702"
+    },
+    {
+      "path": "local-comics/1/9/large.png",
+      "bytes": 537390,
+      "sha256": "23b5c30706ed24f3614eb6ea9784b3c16608bdd51a144e5524909cb70acb8e80"
+    },
+    {
+      "path": "local-comics/1/9/small.png",
+      "bytes": 110664,
+      "sha256": "381c91ecb6e1216339df0ea2f329f8fd5f99b0f09aca5f6b230aa9829554d62b"
+    },
+    {
+      "path": "local-comics/1/10/base.png",
+      "bytes": 1503589,
+      "sha256": "5deafe9b00f10db9bdce9c76c1169ccb3417ebbb42a59cc55eac9e2bef080f87"
+    },
+    {
+      "path": "local-comics/1/10/large.png",
+      "bytes": 269768,
+      "sha256": "7bd886933ce9c2bb5c12b5469fe9aa381f447b7620248d536000bb6c6de422fd"
+    },
+    {
+      "path": "local-comics/1/10/small.png",
+      "bytes": 29568,
+      "sha256": "d0ca49dcbb4888e55d58112943fab4bc97374657d69265c3bcd08b12c33d9b78"
+    },
+    {
+      "path": "local-comics/1/11/base.png",
+      "bytes": 1777950,
+      "sha256": "fa00c2c72ec67d793a14714f453f366ddc186bdac6f8e5834e601501a07145ed"
+    },
+    {
+      "path": "local-comics/1/11/large.png",
+      "bytes": 393301,
+      "sha256": "6f7454ae984d721a695d0394e98c11307d7f6c888af77b64d9fa6f7ade1b5465"
+    },
+    {
+      "path": "local-comics/1/11/small.png",
+      "bytes": 79754,
+      "sha256": "c9440e2f9d1c37504daab447c684dd47a8d4a4398bf659fc86a682c4fea17a9a"
+    },
+    {
+      "path": "local-comics/1/12/base.png",
+      "bytes": 1888516,
+      "sha256": "cc05bb4ccd82cbda476b358c66b1d6b648059be99a1f597d0673e73703772f90"
+    },
+    {
+      "path": "local-comics/1/12/large.png",
+      "bytes": 563720,
+      "sha256": "cf85c0c275b93ece4e9977dd8badbe5c8890d163b6d423d9d5f2ab06bca46516"
+    },
+    {
+      "path": "local-comics/1/12/small.png",
+      "bytes": 111597,
+      "sha256": "eabfd92f46e1603710bafc8e1b869409f67a67c3ebecff93db099bc08b575bb6"
+    },
+    {
+      "path": "local-comics/1/13/base.png",
+      "bytes": 2017113,
+      "sha256": "51bf660e30e798d71e02027c798e60a8169778d2a91dc966b35ea83dd14c8aae"
+    },
+    {
+      "path": "local-comics/1/13/large.png",
+      "bytes": 343264,
+      "sha256": "ef4ea0793f7539e0ddb2f2a3cdcf1f5583d11c66fb866dbb574436943ff13990"
+    },
+    {
+      "path": "local-comics/1/13/small.png",
+      "bytes": 64225,
+      "sha256": "1c1f4060c02be9e972394d0f4e356e7657e9bd12c503c9f002fda8ad4436b057"
+    }
+  ],
+  "source": "https://wfjukebox.b-cdn.net/comics/",
+  "series": {
+    "0": "36 episodes, English",
+    "1": "13 episodes, Traditional Chinese"
+  }
+}

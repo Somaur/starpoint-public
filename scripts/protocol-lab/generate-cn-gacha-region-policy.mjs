@@ -276,7 +276,9 @@ export function buildCnGachaRegionPolicy(
     const fingerprints = new Set(pairs.map((pair) => pair.fingerprint))
     return {
         sourceRegion: "cn",
-        sourceSha256: crypto.createHash("sha256").update(sourceBytes).digest("hex"),
+        // Git may check this JSON out with CRLF on Windows; hash its repository LF form.
+        sourceSha256: crypto.createHash("sha256")
+            .update(sourceBytes.toString("utf8").replace(/\r\n/g, "\n"), "utf8").digest("hex"),
         sourceCatalogSha256: bannerResolution.sourceCatalogSha256,
         rawOddsSourceSha256: rawOddsEvidence.sourceSha256,
         sourcePoolCount: sourceIds.length,

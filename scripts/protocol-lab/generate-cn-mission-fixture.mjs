@@ -10,13 +10,13 @@ import fs from "node:fs"
 import path from "node:path"
 
 const CATEGORY_SOURCES = [
-    { category: 1, definition: "mission_regular", stages: "mission_regular_reward", patternIndex: 2, targetIndex: 1, questKindIndex: 7, missions: 120, stageCount: 568, rewards: 0 },
-    { category: 2, definition: "mission_daily", stages: "mission_daily_reward", patternIndex: 2, targetIndex: 1, questKindIndex: 7, missions: 656, stageCount: 656, rewards: 0 },
-    { category: 3, definition: "mission_event", stages: "mission_event_reward", patternIndex: 2, targetIndex: 1, questKindIndex: 7, missions: 2512, stageCount: 2559, rewards: 0 },
-    { category: 4, definition: "mission_collect_item", stages: "mission_collect_item_reward", patternIndex: 4, targetIndex: 2, questKindIndex: 9, missions: 997, stageCount: 997, rewards: 0 },
-    { category: 5, definition: "mission_degree", stages: "mission_degree_reward", patternIndex: 3, targetIndex: 1, questKindIndex: 8, missions: 1288, stageCount: 1288, rewards: 33 },
+    { category: 1, definition: "mission_regular", stages: "mission_regular_reward", patternIndex: 2, targetIndex: 1, questKindIndex: 7, missions: 120, stageCount: 568, rewards: 568 },
+    { category: 2, definition: "mission_daily", stages: "mission_daily_reward", patternIndex: 2, targetIndex: 1, questKindIndex: 7, missions: 656, stageCount: 656, rewards: 656 },
+    { category: 3, definition: "mission_event", stages: "mission_event_reward", patternIndex: 2, targetIndex: 1, questKindIndex: 7, missions: 2512, stageCount: 2559, rewards: 2559 },
+    { category: 4, definition: "mission_collect_item", stages: "mission_collect_item_reward", patternIndex: 4, targetIndex: 2, questKindIndex: 9, missions: 997, stageCount: 997, rewards: 997 },
+    { category: 5, definition: "mission_degree", stages: "mission_degree_reward", patternIndex: 3, targetIndex: 1, questKindIndex: 8, missions: 1288, stageCount: 1288, rewards: 1288 },
     { category: 9, definition: "mission_char_awake", stages: "mission_char_awake_reward", patternIndex: 4, targetIndex: 5, questKindIndex: 9, missions: 144, stageCount: 144, rewards: 144 },
-    { category: 10, definition: "mission_weekly_def", stages: "mission_weekly_reward", patternIndex: 2, targetIndex: 1, questKindIndex: 7, missions: 2, stageCount: 2, rewards: 0 },
+    { category: 10, definition: "mission_weekly_def", stages: "mission_weekly_reward", patternIndex: 2, targetIndex: 1, questKindIndex: 7, missions: 2, stageCount: 2, rewards: 2 },
 ]
 
 const MISSION_PATTERN_KINDS = [
@@ -121,7 +121,7 @@ const MISSION_PATTERN_KINDS = [
 
 const EXPECTED_MISSION_COUNT = 5719
 const EXPECTED_STAGE_COUNT = 6214
-const EXPECTED_REWARD_COUNT = 177
+const EXPECTED_REWARD_COUNT = 6214
 
 // //// 映射任务关卡范围 [@x380kkm 2026-08-29] ////
 const QUEST_KIND_CATEGORIES = Object.freeze({
@@ -199,31 +199,29 @@ function questKindContract(row, questKindIndex, label) {
     const code = requireSafeInteger(raw, `${label}.quest_kind`)
     const categories = QUEST_KIND_CATEGORIES[code]
     if (categories === undefined) throw new Error(`${label} references unknown QuestRangeReferenceIdKind ${code}`)
-    return { quest_kind: code, quest_categories: [...categories] }
+    const parseKeys = (value) => value === undefined || value === null || value === "(None)"
+        ? null : value === "" ? [] : value.split(",").map((part) => requireSafeInteger(part, `${label}.quest_scope`))
+    const indices = code <= 2 ? [1, 2, 3] : code === 11 ? [3] : code === 12 ? [] : [1, 3]
+    return { quest_kind: code, quest_categories: [...categories], quest_scope: indices.map((index) => parseKeys(row[questKindIndex + index])) }
+}
+
+function missionTimeContract(row, questKindIndex, label) {
+    // CN boot sets JAPAN_STANDARD_OFFSET_MILLISECONDS to 28800000 (UTC+8).
+    const timestamp = (raw) => {
+        if (raw === undefined || raw === null || raw === "" || raw === "(None)") return null
+        const value = Date.parse(`${raw.replace(" ", "T")}+08:00`) / 1000
+        if (!Number.isSafeInteger(value)) throw new Error(`${label} contains an invalid mission time`)
+        return value
+    }
+    return {
+        quest_rank_id: optionalPositiveInteger(row[questKindIndex + 4]),
+        enable_start_time: timestamp(row[questKindIndex + 18]),
+        enable_end_time: timestamp(row[questKindIndex + 19]),
+    }
 }
 
 function stageTarget(row, targetIndex, label) {
     return requireSafeInteger(row[targetIndex], `${label}.target`)
-}
-
-function activeMissionRewards(activeRewards, missionId, stage) {
-    const row = activeRewards[String(missionId)]?.[String(stage)]?.[0]
-    if (!Array.isArray(row)) return []
-    const rewards = []
-    for (let slot = 0; slot < 4; slot += 1) {
-        const base = 7 + slot * 6
-        const kind = Number.parseInt(row[base], 10) || 0
-        const amount = Number.parseInt(row[base + 1], 10) || 0
-        if (kind === 0 || amount === 0) continue
-        rewards.push({
-            kind,
-            amount,
-            item_id: optionalPositiveInteger(row[base + 2]),
-            character_id: optionalPositiveInteger(row[base + 3]),
-            equipment_id: optionalPositiveInteger(row[base + 4]),
-        })
-    }
-    return rewards
 }
 
 function characterAwakeRewards(characterAwakeRewardTable, missionId, stage) {
@@ -239,6 +237,34 @@ function characterAwakeRewards(characterAwakeRewardTable, missionId, stage) {
         character_id: null,
         equipment_id: null,
     }]
+}
+
+function standardMissionRewards(row, category) {
+    const rewards = []
+    for (let base = category === 4 ? 6 : 5; base < row.length; base += 6) {
+        if (row[base] === "" || row[base] === "(None)" || row[base] == null) continue
+        const kind = requireSafeInteger(row[base], "mission reward kind")
+        rewards.push({
+            kind,
+            amount: optionalPositiveInteger(row[base + 1]) ?? (kind === 6 ? 1 : 0),
+            item_id: optionalPositiveInteger(row[base + 2]),
+            character_id: optionalPositiveInteger(row[base + 3]),
+            equipment_id: optionalPositiveInteger(row[base + 4]),
+            degree_id: optionalPositiveInteger(row[base + 5]),
+        })
+    }
+    return rewards
+}
+
+function generalBattleContract(category, row, pattern, label) {
+    if (category === 9) return {}
+    const offset = category === 4 ? 2 : category === 5 ? 1 : 0
+    const optionalInteger = (value) => value == null || value === "" || value === "(None)" ? null : requireSafeInteger(value, label)
+    return {
+        statistics_kind: pattern === "battle_zone_statistics_count" ? optionalInteger(row[3 + offset]) : null,
+        battle_kind: optionalInteger(row[5 + offset]),
+        target_mission_ids: String(row[17 + offset] ?? "").split(",").filter((id) => id && id !== "(None)").map((id) => requireSafeInteger(id, label)),
+    }
 }
 
 function degreeTarget(category, definitionRow) {
@@ -279,7 +305,7 @@ function awakeBattleContract(category, definitionRow, label) {
 // //// /解码任务模式, 阶段和奖励 ////
 
 // //// 生成任务目录和派生索引 [@x380kkm 2026-08-23] ////
-function buildCategory(assetRoot, descriptor, activeRewards) {
+function buildCategory(assetRoot, descriptor) {
     const definitions = readJsonObject(assetRoot, `${descriptor.definition}.json`)
     const stages = readJsonObject(assetRoot, `${descriptor.stages}.json`)
     const definitionIds = Object.keys(definitions)
@@ -302,7 +328,7 @@ function buildCategory(assetRoot, descriptor, activeRewards) {
             const stage = requireSafeInteger(stageText, `category ${descriptor.category}:${missionId}.stage`)
             const rewards = descriptor.category === 9
                 ? characterAwakeRewards(stages, missionId, stage)
-                : activeMissionRewards(activeRewards, missionId, stage)
+                : standardMissionRewards(row, descriptor.category)
             stageCount += 1
             rewardCount += rewards.length
             return {
@@ -318,8 +344,10 @@ function buildCategory(assetRoot, descriptor, activeRewards) {
             pattern: missionPattern(definitionRow, descriptor.patternIndex, label),
             degree_target: degreeTarget(descriptor.category, definitionRow),
             ...questKindContract(definitionRow, descriptor.questKindIndex, label),
+            ...missionTimeContract(definitionRow, descriptor.questKindIndex, label),
             stages: missionStages,
             ...awakeBattleContract(descriptor.category, definitionRow, label),
+            ...generalBattleContract(descriptor.category, definitionRow, missionPattern(definitionRow, descriptor.patternIndex, label), label),
         }
     })
     if (stageCount !== descriptor.stageCount || rewardCount !== descriptor.rewards) {
@@ -352,10 +380,9 @@ function buildRankThresholds(playerRanks) {
 }
 
 function buildFixture(assetRoot) {
-    const activeRewards = readJsonObject(assetRoot, "mission_active_reward.json")
     const categories = Object.fromEntries(CATEGORY_SOURCES.map((descriptor) => [
         String(descriptor.category),
-        buildCategory(assetRoot, descriptor, activeRewards),
+        buildCategory(assetRoot, descriptor),
     ]))
     const characterQuestLookup = readJsonObject(assetRoot, "character_quest_lookup.json")
     const playerRanks = readJsonObject(assetRoot, "cdndata/player_rank_full.json")

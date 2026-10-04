@@ -83,6 +83,12 @@ struct QuestZone {
     use_dash_count: i64,
     #[serde(default)]
     use_skill_count: i64,
+    #[serde(default)]
+    weak_point_attack_count: i64,
+    #[serde(default)]
+    fever_count: i64,
+    #[serde(default)]
+    enemy_kill_count: i64,
 }
 
 #[derive(Deserialize)]
@@ -216,6 +222,13 @@ fn start(
 
 // //// 结算联机战斗并提交玩家快照 [@x380kkm 2026-08-22] ////
 fn finish(
+    request: &HttpRequest,
+    database: &mut ServiceDatabase,
+) -> Result<HttpResponse, PersonalServiceError> {
+    database.atomic_battle_settlement(|database| finish_atomic(request, database))
+}
+
+fn finish_atomic(
     request: &HttpRequest,
     database: &mut ServiceDatabase,
 ) -> Result<HttpResponse, PersonalServiceError> {
@@ -373,6 +386,20 @@ fn finish(
             power_flip_count,
             dash_count,
             skill_count,
+            extra_action_counts: statistics
+                .and_then(|value| value.zones.as_deref())
+                .unwrap_or_default()
+                .iter()
+                .fold([0_i64; 3], |mut totals, zone| {
+                    for (total, amount) in totals.iter_mut().zip([
+                        zone.weak_point_attack_count,
+                        zone.fever_count,
+                        zone.enemy_kill_count,
+                    ]) {
+                        *total = total.saturating_add(amount.max(0));
+                    }
+                    totals
+                }),
             max_skill_chain_count,
             max_combo_count,
             is_host,

@@ -209,7 +209,12 @@ pub(super) fn sell_equipment(
         if stack < 0 {
             return Ok(error_response("400 Bad Request", "invalid_equipment_stack"));
         }
-        total_rewards.merge(calculate_dissolve_rewards(equipment_id, stack)?)?;
+        // Stack excludes the owned original. A full sale also consumes that
+        // original, including when there are no duplicates.
+        let count = stack
+            .checked_add(1)
+            .ok_or_else(|| PersonalServiceError::new("CN equipment sale count exceeds range"))?;
+        total_rewards.merge(calculate_dissolve_rewards(equipment_id, count)?)?;
         sales.push(equipment_id);
     }
     {

@@ -8,7 +8,7 @@ mod events;
 use self::events::apply_event_progress;
 use crate::cn_battle_assets::{rank_degree_and_stamina, BattleFixture, BattleQuest};
 use crate::cn_battle_rewards::{
-    apply_character_exp, apply_reward_at, apply_score_attack_border_reward, apply_score_rewards,
+    apply_character_exp, apply_reward_at, apply_score_rewards,
     RewardResult,
 };
 use crate::cn_stamina::{battle_stamina_cost, current_stamina};
@@ -38,6 +38,7 @@ pub(crate) struct FinishBattleInput<'a> {
     pub(crate) power_flip_count: Option<i64>,
     pub(crate) dash_count: Option<i64>,
     pub(crate) skill_count: Option<i64>,
+    pub(crate) extra_action_counts: [i64; 3],
     pub(crate) max_skill_chain_count: Option<i64>,
     pub(crate) max_combo_count: Option<i64>,
     pub(crate) is_host: Option<bool>,
@@ -65,6 +66,7 @@ struct PreviousProgress {
     best_elapsed_time_ms: Option<i64>,
     clear_rank: Option<i64>,
     high_score: Option<i64>,
+    finished: bool,
 }
 
 // //// 扣除单机战斗入场资源并更新队伍槽位 [@x380kkm 2026-08-22] ////
@@ -76,7 +78,7 @@ pub(crate) fn prepare_battle_start(
 ) -> Result<Result<StartBattleMutation, StartBattleFailure>, PersonalServiceError> {
     let mut player_data = decode_snapshot(serialized)?;
     let root = require_root(&mut player_data)?;
-    if !deduct_entry_item(root, quest)? {
+    if !apply_completion_cost(root, quest, false)? || !deduct_entry_item(root, quest)? {
         return Ok(Err(StartBattleFailure::InsufficientEntryItem));
     }
     let stamina_cost = battle_stamina_cost(
@@ -116,6 +118,42 @@ fn deduct_entry_item(
         return Ok(false);
     }
     items.insert(item_id.to_string(), Value::from(current - count));
+    Ok(true)
+}
+
+// Validate every on-clear item before mutating any balance. Once-only costs
+// are handled by quest/unlock, never by the battle settlement.
+fn apply_completion_cost(
+    root: &mut Map<String, Value>,
+    quest: &BattleQuest,
+    consume: bool,
+) -> Result<bool, PersonalServiceError> {
+    if quest.completion_items.is_empty() {
+        return Ok(true);
+    }
+    let mut costs = BTreeMap::<i64, i64>::new();
+    for item in &quest.completion_items {
+        if item.id <= 0 || item.count <= 0 {
+            return Err(PersonalServiceError::new("invalid CN battle completion cost"));
+        }
+        let total = costs.entry(item.id).or_default();
+        *total = total.checked_add(item.count).ok_or_else(|| {
+            PersonalServiceError::new("CN battle completion cost overflow")
+        })?;
+    }
+    let items = require_object(root, "item_list")?;
+    if costs.iter().any(|(id, count)| {
+        items.get(&id.to_string()).and_then(Value::as_i64).unwrap_or(0) < *count
+    }) {
+        return Ok(false);
+    }
+    if consume {
+        for (id, count) in costs {
+            let key = id.to_string();
+            let current = items.get(&key).and_then(Value::as_i64).unwrap_or(0);
+            items.insert(key, json!(current - count));
+        }
+    }
     Ok(true)
 }
 
@@ -201,20 +239,25 @@ pub(crate) fn finish_battle(
 ) -> Result<BattleMutation, PersonalServiceError> {
     let mut player_data = decode_snapshot(serialized)?;
     let root = require_root(&mut player_data)?;
+    crate::cn_mission::prepare_periods(root, database, account_id, server_time)?;
     let previous_progress =
         read_previous_progress(root, active_quest.category, active_quest.quest_id)?;
-    let quest_previously_completed = previous_progress.is_some();
+    let quest_previously_completed = previous_progress.as_ref().is_some_and(|progress| {
+        progress.finished || progress.clear_rank.is_some_and(|rank| rank > 0)
+    });
     let previous_progress = previous_progress.unwrap_or_default();
-    let clear_rank = calculate_clear_rank(quest, input.elapsed_time_ms);
+    let clear_rank = if active_quest.category == SCORE_ATTACK_EVENT_CATEGORY {
+        events::score_attack::clear_rank(active_quest.quest_id, input.score)?
+    } else { calculate_clear_rank(quest, input.elapsed_time_ms) };
     let quest_accomplished = if active_quest.category == SCORE_ATTACK_EVENT_CATEGORY {
-        quest
-            .score_attack_border_rewards
-            .iter()
-            .min_by_key(|border| border.score)
-            .map_or(input.is_accomplished, |border| input.score >= border.score)
+        events::score_attack::is_accomplished(active_quest.quest_id, input.score)?
     } else {
         input.is_accomplished
     };
+
+    if quest_accomplished && !apply_completion_cost(root, quest, true)? {
+        return Err(PersonalServiceError::new("insufficient CN battle completion items"));
+    }
 
     let initial_free_mana = get_user_info_value(root, "free_mana")?;
     let initial_exp_pool = get_user_info_value(root, "exp_pool")?;
@@ -249,7 +292,7 @@ pub(crate) fn finish_battle(
     }
     // //// /段位提升时增加新段位体力上限 ////
 
-    let clear_reward = if !quest_previously_completed {
+    let clear_reward = if quest_accomplished && !quest_previously_completed {
         match &quest.clear_reward {
             Some(reward) => apply_reward_at(root, reward, server_time)?,
             None => RewardResult::default(),
@@ -257,7 +300,7 @@ pub(crate) fn finish_battle(
     } else {
         RewardResult::default()
     };
-    let s_plus_reward = if clear_rank == 5 && previous_progress.clear_rank != Some(5) {
+    let s_plus_reward = if quest_accomplished && clear_rank == 5 && previous_progress.clear_rank != Some(5) {
         match &quest.s_plus_reward {
             Some(reward) => apply_reward_at(root, reward, server_time)?,
             None => RewardResult::default(),
@@ -283,6 +326,7 @@ pub(crate) fn finish_battle(
         database,
         account_id,
         active_quest.category,
+        active_quest.quest_id,
         input.is_multi,
         quest_accomplished,
         input.max_skill_chain_count,
@@ -300,17 +344,12 @@ pub(crate) fn finish_battle(
         drop_multiplier,
         server_time,
     )?;
-    if active_quest.category == SCORE_ATTACK_EVENT_CATEGORY {
-        score_rewards
-            .rewards
-            .merge(apply_score_attack_border_reward(
-                root,
-                quest,
-                input.score,
-                drop_multiplier,
-                server_time,
-            )?);
-    }
+    let score_attack_event = if active_quest.category == SCORE_ATTACK_EVENT_CATEGORY {
+        let (response, rewards) = events::score_attack::finish(root, active_quest.quest_id,
+            input, previous_progress.high_score, server_time)?;
+        score_rewards.rewards.merge(rewards);
+        response
+    } else { Value::Null };
     let character_exp = apply_character_exp(
         root,
         fixture,
@@ -342,13 +381,24 @@ pub(crate) fn finish_battle(
         drop_multiplier,
         server_time,
     )?;
-    consume_expert_challenge_point(root, active_quest.category, quest.event_id)?;
+    let solo_time_attack_event = if active_quest.category == 25 {
+        let (response, rewards) = events::solo_time::finish(
+            root, active_quest.quest_id, input,
+            previous_progress.best_elapsed_time_ms, previous_progress.high_score, server_time,
+        )?;
+        event_data.rewards.merge(rewards);
+        response
+    } else { Value::Null };
+    if quest_accomplished {
+        consume_expert_challenge_point(root, active_quest.category,
+            quest.event_id.or_else(|| (active_quest.category == 25).then_some(1)))?;
+    }
 
     let final_free_mana = get_user_info_value(root, "free_mana")?;
     let final_exp_pool = get_user_info_value(root, "exp_pool")?;
     let final_free_vmoney = get_user_info_value(root, "free_vmoney")?;
     let degree_id = get_user_info_value(root, "degree_id")?;
-    let daily_challenge_points = if active_quest.category == EXPERT_SINGLE_EVENT_CATEGORY {
+    let daily_challenge_points = if matches!(active_quest.category, EXPERT_SINGLE_EVENT_CATEGORY | 25) {
         root.get("user_daily_challenge_point_list")
             .cloned()
             .unwrap_or_else(|| Value::Array(Vec::new()))
@@ -376,7 +426,7 @@ pub(crate) fn finish_battle(
             .or_insert(current);
     }
     let snapshot = encode_snapshot(&player_data)?;
-    let response = json!({
+    let mut response = json!({
         "user_info": {
             "free_mana": final_free_mana,
             "exp_pool": final_exp_pool,
@@ -415,12 +465,15 @@ pub(crate) fn finish_battle(
         "item_list": reward_result.items,
         "rush_event": event_data.rush_event,
         "carnival_event": event_data.carnival_event,
+        "solo_time_attack_event": solo_time_attack_event,
+        "score_attack_event": score_attack_event,
         "user_daily_challenge_point_list": daily_challenge_points,
         "presigned_quest_category": [],
         "mission_info": mission_delta.mission_info,
         "active_mission_list": mission_delta.active_mission_list,
         "mail_arrived": false,
     });
+    crate::cn_mission::sync_reward_response(&mut response, &player_data, server_time);
     Ok(BattleMutation { snapshot, response })
 }
 // //// /结算单机战斗并持久化奖励 ////
@@ -430,9 +483,7 @@ fn consume_expert_challenge_point(
     category: i64,
     event_id: Option<i64>,
 ) -> Result<(), PersonalServiceError> {
-    if category != EXPERT_SINGLE_EVENT_CATEGORY {
-        return Ok(());
-    }
+    let prefix = match category { EXPERT_SINGLE_EVENT_CATEGORY => "expert", 25 => "solo", _ => return Ok(()) };
     let Some(event_id) = event_id else {
         return Ok(());
     };
@@ -443,7 +494,7 @@ fn consume_expert_challenge_point(
         })
         .as_ref()
         .map_err(|error| PersonalServiceError::new(error.clone()))?;
-    let Some(challenge_point_id) = challenge_points.get(&format!("expert_{event_id}")) else {
+    let Some(challenge_point_id) = challenge_points.get(&format!("{prefix}_{event_id}")) else {
         return Ok(());
     };
     let entries = root
@@ -582,6 +633,13 @@ fn update_action_totals(
         ("total_powerflips", input.power_flip_count),
         ("total_dashes", input.dash_count),
         ("total_skills", input.skill_count),
+        (
+            "total_weak_point_attacks",
+            Some(input.extra_action_counts[0]),
+        ),
+        ("total_fevers", Some(input.extra_action_counts[1])),
+        ("total_enemy_kills", Some(input.extra_action_counts[2])),
+        ("total_drop_mana", Some(input.add_mana)),
     ] {
         let Some(amount) = amount else {
             continue;
@@ -601,6 +659,19 @@ fn update_action_totals(
             current.checked_add(amount).ok_or_else(|| {
                 PersonalServiceError::new("CN battle action count exceeds the supported range")
             })?,
+        )?;
+        let mode_key = format!("{key}_{}", if input.is_multi { "multi" } else { "single" });
+        let current = root
+            .get("user_info")
+            .and_then(|info| info.get(&mode_key))
+            .and_then(Value::as_i64)
+            .unwrap_or(0);
+        set_user_info_value(
+            root,
+            &mode_key,
+            current
+                .checked_add(amount)
+                .ok_or_else(|| PersonalServiceError::new("CN mode action count exceeds range"))?,
         )?;
     }
     Ok(())
@@ -632,6 +703,7 @@ fn read_previous_progress(
         best_elapsed_time_ms: progress.get("best_elapsed_time_ms").and_then(Value::as_i64),
         clear_rank: progress.get("clear_rank").and_then(Value::as_i64),
         high_score: progress.get("high_score").and_then(Value::as_i64),
+        finished: progress.get("finished").and_then(Value::as_bool).unwrap_or(false),
     }))
 }
 
@@ -661,6 +733,20 @@ fn update_quest_progress(
         let progress = progress.as_object_mut().ok_or_else(|| {
             PersonalServiceError::new("stored CN quest progress entry is invalid")
         })?;
+        increment_quest_clear_count(progress, input.is_multi)?;
+        let ss_clears = progress
+            .get("ss_clear_count")
+            .and_then(Value::as_i64)
+            .unwrap_or_else(|| i64::from(previous.clear_rank == Some(5)))
+            .max(0);
+        progress.insert(
+            "ss_clear_count".to_owned(),
+            Value::from(
+                ss_clears
+                    .checked_add(i64::from(clear_rank == 5))
+                    .ok_or_else(|| PersonalServiceError::new("CN SS clear count exceeds range"))?,
+            ),
+        );
         progress.insert("finished".to_owned(), Value::Bool(true));
         progress.insert(
             "best_elapsed_time_ms".to_owned(),
@@ -700,7 +786,33 @@ fn update_quest_progress(
             "clear_rank": clear_rank,
             "high_score": input.score,
             "leader_character_id": leader_character_id,
+            "single_clear_count": i64::from(!input.is_multi),
+            "multi_clear_count": i64::from(input.is_multi),
+            "ss_clear_count": i64::from(clear_rank == 5),
         }));
+    }
+    Ok(())
+}
+
+fn increment_quest_clear_count(
+    progress: &mut Map<String, Value>,
+    is_multi: bool,
+) -> Result<(), PersonalServiceError> {
+    for (key, increment) in [
+        ("single_clear_count", i64::from(!is_multi)),
+        ("multi_clear_count", i64::from(is_multi)),
+    ] {
+        let count = progress
+            .get(key)
+            .and_then(Value::as_i64)
+            .unwrap_or(0)
+            .max(0);
+        progress.insert(
+            key.to_owned(),
+            Value::from(count.checked_add(increment).ok_or_else(|| {
+                PersonalServiceError::new("CN quest clear count exceeds the supported range")
+            })?),
+        );
     }
     Ok(())
 }
@@ -814,10 +926,12 @@ mod tests {
             raid_event_id: None,
             carnival_event_id: None,
             carnival_folder_id: None,
+            carnival_legacy_folder_id: None,
             carnival_difficulty_score: None,
             carnival_time_limit_ms: None,
             entry_item_id: Some(40_000),
             entry_item_count: 2,
+            completion_items: vec![],
             stamina_cost: 5,
         };
         let snapshot = json!({

@@ -73,6 +73,12 @@ struct QuestZone {
     use_dash_count: i64,
     #[serde(default)]
     use_skill_count: i64,
+    #[serde(default)]
+    weak_point_attack_count: i64,
+    #[serde(default)]
+    fever_count: i64,
+    #[serde(default)]
+    enemy_kill_count: i64,
 }
 
 #[derive(Deserialize)]
@@ -190,7 +196,14 @@ fn route_start(
         ));
     };
     let response_time = server_time(database)?;
-    let start = match prepare_battle_start(&snapshot.data, quest, body.party_id, response_time)? {
+    let prepared_snapshot = crate::cn_mission::prepare_snapshot_periods(
+        &snapshot.data,
+        database,
+        snapshot.account_id,
+        response_time,
+    )?;
+    let start = match prepare_battle_start(&prepared_snapshot, quest, body.party_id, response_time)?
+    {
         Ok(start) => start,
         Err(StartBattleFailure::InsufficientEntryItem) => {
             return Ok(battle_error(
@@ -238,6 +251,13 @@ fn route_start(
 
 // //// 结算并持久化 CN 单机战斗 [@x380kkm 2026-07-22] ////
 fn route_finish(
+    request: &HttpRequest,
+    database: &mut ServiceDatabase,
+) -> Result<HttpResponse, PersonalServiceError> {
+    database.atomic_battle_settlement(|database| route_finish_atomic(request, database))
+}
+
+fn route_finish_atomic(
     request: &HttpRequest,
     database: &mut ServiceDatabase,
 ) -> Result<HttpResponse, PersonalServiceError> {
@@ -357,6 +377,19 @@ fn route_finish(
             power_flip_count: Some(power_flip_count),
             dash_count: Some(dash_count),
             skill_count: Some(skill_count),
+            extra_action_counts: body.statistics.zones.iter().fold(
+                [0_i64; 3],
+                |mut totals, zone| {
+                    for (total, amount) in totals.iter_mut().zip([
+                        zone.weak_point_attack_count,
+                        zone.fever_count,
+                        zone.enemy_kill_count,
+                    ]) {
+                        *total = total.saturating_add(amount.max(0));
+                    }
+                    totals
+                },
+            ),
             max_skill_chain_count: body.statistics.max_skill_chain_count,
             max_combo_count: body.statistics.max_combo_count,
             is_host: None,

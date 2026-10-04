@@ -119,18 +119,7 @@ fn update_step(
         None
     };
     let server_time = server_time(database)?;
-    let tutorial_is_complete = root
-        .get("user_tutorial")
-        .ok_or_else(|| PersonalServiceError::new("stored CN user_tutorial data is missing"))?
-        .is_null()
-        || root
-            .get("user_triggered_tutorial")
-            .and_then(Value::as_array)
-            .is_some_and(|tutorials| {
-                tutorials
-                    .iter()
-                    .any(|tutorial_id| tutorial_id.as_i64() == Some(12))
-            });
+    let tutorial_is_complete = crate::cn_player::is_tutorial_completed(root);
     let tutorial_end = response_step == 16;
     let tutorial_gacha_is_saved = root
         .get("tutorial_gacha")
@@ -260,6 +249,9 @@ fn update_step(
     } else {
         basic_tutorial_step_response(response_step, server_time)
     };
+    if crate::cn_player::is_tutorial_completed(root) {
+        root.insert("user_tutorial".to_owned(), Value::Null);
+    }
     database.save_player_snapshot(snapshot.account_id, &encode_player_data(&player_data)?)?;
     msgpack_response_at(body.viewer_id, false, server_time, response)
 }
@@ -365,10 +357,11 @@ fn tutorial_gacha_response(
         .and_then(Value::as_object)
         .and_then(|gacha| gacha.get("duplicate_item"))
         .and_then(Value::as_object);
+    let (movie_id, seed) = crate::cn_gacha::tutorial_movie(character_id)?;
     let mut draw = json!({
         "character_id": character_id,
-        "movie_id": "normal_guarantee",
-        "seed": 10007656,
+        "movie_id": movie_id,
+        "seed": seed,
         "entry_count": 1,
     });
     let mut item_list = Map::new();
@@ -498,7 +491,8 @@ pub(crate) fn create_character_response(
         .get("mana_board_index")
         .and_then(Value::as_i64)
         .unwrap_or(1);
-    let formatted_time = format_client_time(server_time);
+    let join_time = character_time(stored_character.get("join_time"), server_time);
+    let update_time = character_time(stored_character.get("update_time"), server_time);
     let mut response = json!({
         "viewer_id": 0,
         "character_id": character_id,
@@ -506,9 +500,9 @@ pub(crate) fn create_character_response(
         "exp": exp,
         "exp_total": exp,
         "mana_board_index": mana_board_index,
-        "create_time": formatted_time.clone(),
-        "update_time": formatted_time.clone(),
-        "join_time": formatted_time,
+        "create_time": join_time.clone(),
+        "update_time": update_time,
+        "join_time": join_time,
     });
     if let Some(bond_token_list) = stored_character
         .get("bond_token_list")
@@ -523,6 +517,14 @@ pub(crate) fn create_character_response(
             );
     }
     response
+}
+
+fn character_time(value: Option<&Value>, fallback: i64) -> String {
+    value
+        .and_then(Value::as_i64)
+        .map(format_client_time)
+        .or_else(|| value.and_then(Value::as_str).map(str::to_owned))
+        .unwrap_or_else(|| format_client_time(fallback))
 }
 
 pub(crate) fn format_client_time(server_time: i64) -> String {

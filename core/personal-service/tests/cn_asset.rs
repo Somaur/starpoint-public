@@ -84,6 +84,196 @@ fn send_request_with_device_kind(
     )
 }
 
+fn write_cross_platform_upgrade_fixture(root: &std::path::Path, foreign_directory: &str) {
+    let archive = |directory: &str, name: &str| {
+        write_archive(root, directory, name, b"fixture");
+        json!({"location": format!("https://retired.invalid/{directory}/{name}"),
+               "size": 7, "sha256": STANDARD.encode(Sha256::digest(b"fixture"))})
+    };
+    let full = archive("archive-common-full", "base.zip");
+    let foreign = archive(foreign_directory, "foreign-only.zip");
+    let common = archive("archive-common-diff", "activity.zip");
+    write_path_manifest(
+        root,
+        json!({
+            "info": {"client_asset_version": "", "target_asset_version": "1.4.56",
+                     "eventual_target_asset_version": "1.4.56", "is_initial": true,
+                     "latest_maj_first_version": "1.4.54"},
+            "full": {"version": "1.4.54", "archive": [full]},
+            // Deliberately unordered, as in the distributed CDN manifest.
+            "diff": [
+                {"version": "1.4.56", "original_version": "1.4.55", "archive": [common]},
+                {"version": "1.4.55", "original_version": "1.4.54", "archive": [foreign]}
+            ],
+            "asset_version_hash": "fixture"
+        }),
+    );
+}
+
+// Mirrors the shipping client's observable contract: full, when present, is
+// always downloaded, then transitions are followed by original_version.
+fn client_download_plan(data: &Value, installed: &str) -> (String, Vec<String>) {
+    let mut version = installed.to_owned();
+    let mut locations = Vec::new();
+    if !data["full"].is_null() {
+        version = data["full"]["version"].as_str().unwrap().to_owned();
+        locations.extend(
+            data["full"]["archive"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|a| a["location"].as_str().unwrap().to_owned()),
+        );
+    }
+    let groups = data["diff"].as_array().cloned().unwrap_or_default();
+    let mut visited = BTreeSet::new();
+    while let Some(group) = groups
+        .iter()
+        .find(|group| group["original_version"] == version)
+    {
+        assert!(visited.insert(version.clone()), "client would loop forever");
+        locations.extend(
+            group["archive"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|a| a["location"].as_str().unwrap().to_owned()),
+        );
+        version = group["version"].as_str().unwrap().to_owned();
+    }
+    (version, locations)
+}
+
+#[test]
+fn traverses_platform_only_versions_before_common_updates() {
+    for (device, foreign) in [("2", "archive-ios-diff"), ("1", "archive-android-diff")] {
+        let root = TempDir::new().unwrap();
+        write_cross_platform_upgrade_fixture(root.path(), foreign);
+        let service = PersonalService::start(root.path(), 0).unwrap();
+        let body = encode_request(&json!({}));
+        for installed in ["", "1.4.54", "1.4.55"] {
+            let response = send_request_with_device_kind(
+                service.port(),
+                "/api/index.php/asset/get_path",
+                &body,
+                installed,
+                device,
+            );
+            let data = decode_response::<Value>(&response).data;
+            let (version, files) = client_download_plan(&data, installed);
+            assert_eq!(version, "1.4.56");
+            assert_eq!(files.len(), if installed.is_empty() { 2 } else { 1 });
+            assert!(files.iter().all(|location| !location.contains(foreign)));
+            assert_eq!(data["info"]["is_initial"], installed.is_empty());
+            assert_eq!(data["full"].is_null(), !installed.is_empty());
+        }
+        service.stop().unwrap();
+    }
+}
+
+#[test]
+fn current_version_needs_no_download_across_repeated_service_restarts() {
+    let root = TempDir::new().unwrap();
+    write_cross_platform_upgrade_fixture(root.path(), "archive-ios-diff");
+    let body = encode_request(&json!({}));
+    for _ in 0..3 {
+        let service = PersonalService::start(root.path(), 0).unwrap();
+        let response = send_request_with_device_kind(
+            service.port(),
+            "/api/index.php/asset/get_path",
+            &body,
+            "1.4.56",
+            "2",
+        );
+        let response = decode_response::<Value>(&response);
+        assert!(!response.data_headers.asset_update);
+        assert!(response.data["full"].is_null());
+        assert!(response.data["diff"].is_null());
+        assert_eq!(response.data["info"]["is_initial"], false);
+        assert_eq!(
+            client_download_plan(&response.data, "1.4.56"),
+            ("1.4.56".into(), vec![])
+        );
+        service.stop().unwrap();
+    }
+}
+
+#[test]
+fn unknown_client_versions_fall_back_to_complete_download() {
+    let root = TempDir::new().unwrap();
+    write_cross_platform_upgrade_fixture(root.path(), "archive-ios-diff");
+    let service = PersonalService::start(root.path(), 0).unwrap();
+    let body = encode_request(&json!({}));
+    for installed in ["", "invalid", "1.3.9", "1.4.57"] {
+        let response = send_request_with_device_kind(
+            service.port(),
+            "/api/index.php/asset/get_path",
+            &body,
+            installed,
+            "2",
+        );
+        let data = decode_response::<Value>(&response).data;
+        assert_eq!(data["info"]["is_initial"], true);
+        let (version, files) = client_download_plan(&data, installed);
+        assert_eq!(version, "1.4.56");
+        assert_eq!(files.len(), 2);
+    }
+    service.stop().unwrap();
+}
+
+#[test]
+fn matching_platform_still_receives_its_own_archives() {
+    let root = TempDir::new().unwrap();
+    write_cross_platform_upgrade_fixture(root.path(), "archive-ios-diff");
+    let service = PersonalService::start(root.path(), 0).unwrap();
+    let response = send_request_with_device_kind(
+        service.port(),
+        "/api/index.php/asset/get_path",
+        &encode_request(&json!({})),
+        "1.4.54",
+        "1",
+    );
+    let (version, files) =
+        client_download_plan(&decode_response::<Value>(&response).data, "1.4.54");
+    assert_eq!(version, "1.4.56");
+    assert_eq!(files.len(), 2);
+    assert!(files
+        .iter()
+        .any(|location| location.contains("/archive-ios-diff/")));
+    service.stop().unwrap();
+}
+
+#[test]
+fn rejects_ambiguous_and_backwards_version_chains() {
+    for transitions in [
+        vec![("1.4.54", "1.4.55"), ("1.4.54", "1.4.56")],
+        vec![("1.4.54", "1.4.55"), ("1.4.55", "1.4.54")],
+        vec![("1.4.54", "1.4.54")],
+    ] {
+        let root = TempDir::new().unwrap();
+        write_cross_platform_upgrade_fixture(root.path(), "archive-ios-diff");
+        let manifest_path = root.path().join("cdn/cn/path");
+        let mut manifest: Value =
+            serde_json::from_slice(&fs::read(&manifest_path).unwrap()).unwrap();
+        manifest["diff"] = transitions
+            .into_iter()
+            .map(|(from, to)| json!({"original_version":from, "version":to, "archive":[]}))
+            .collect::<Vec<_>>()
+            .into();
+        fs::write(manifest_path, serde_json::to_vec(&manifest).unwrap()).unwrap();
+        let service = PersonalService::start(root.path(), 0).unwrap();
+        let response = send_request_with_device_kind(
+            service.port(),
+            "/api/index.php/asset/get_path",
+            &encode_request(&json!({})),
+            "1.4.54",
+            "2",
+        );
+        assert!(response.starts_with("HTTP/1.1 500"), "{response}");
+        service.stop().unwrap();
+    }
+}
+
 // //// 返回 CN 资产版本和下载路径 [@x380kkm 2026-08-10] ////
 #[test]
 fn returns_local_cn_asset_metadata() {
@@ -145,7 +335,7 @@ fn returns_local_cn_asset_metadata() {
         service.port(),
         "/api/index.php/asset/get_path",
         &request_body,
-        "1.4.0",
+        "",
     );
     let path = decode_response::<Value>(&path_response);
     assert!(path.data_headers.asset_update);
@@ -171,7 +361,7 @@ fn returns_local_cn_asset_metadata() {
         &["archive", "original_version", "version"],
     );
     assert_eq!(path.data["full"]["version"], "1.4.0");
-    assert_eq!(path.data["info"]["client_asset_version"], "1.4.0");
+    assert_eq!(path.data["info"]["client_asset_version"], "");
     assert_eq!(path.data["info"]["target_asset_version"], "1.4.1");
     assert_eq!(path.data["info"]["eventual_target_asset_version"], "1.4.1");
     assert_eq!(path.data["info"]["latest_maj_first_version"], "1.4.0");
@@ -263,7 +453,7 @@ fn returns_ios_asset_metadata_for_device_one() {
         service.port(),
         "/api/index.php/asset/get_path",
         &request_body,
-        "1.4.0",
+        "",
         "1",
     );
     let path = decode_response::<Value>(&path_response).data;
@@ -573,9 +763,8 @@ fn discovers_an_additive_ios_override_archive() {
         .iter()
         .filter_map(|group| group["version"].as_str())
         .collect::<Vec<_>>();
-    assert!(versions.contains(&"1.4.57"));
-    assert!(versions.contains(&"1.4.58"));
-    assert!(versions.contains(&"1.4.59"));
+    assert_eq!(versions, vec!["1.4.59"]);
+    assert!(path["full"].is_null());
     let target_group = path["diff"]
         .as_array()
         .expect("iOS diff groups exist")

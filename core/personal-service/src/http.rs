@@ -374,6 +374,7 @@ fn request_body_limit(headers: &[u8]) -> Result<usize, PersonalServiceError> {
             || path == PLAYER_LOCAL_SAVE_IMPORT_PATH
             || path == PLAYER_LOCAL_SAVE_ENCRYPTED_IMPORT_PATH
             || path.starts_with(TRANSFER_SLOT_PREFIX)
+            || path.starts_with("/v1/local-comics/")
         {
             LOCAL_SAVE_IMPORT_BODY_LIMIT
         } else if sdk_compat::is_sdk_diagnostic_path(path) {
@@ -492,8 +493,21 @@ fn route_request(
         return response;
     }
     let active_profile = database.active_server_profile()?;
+    if request.method() == "POST" && request.path() == "/crash" {
+        if let Some(report) = crate::client_crash::parse(request.body()) {
+            if database.client_crashes.len() == 8 {
+                database.client_crashes.pop_front();
+            }
+            database.client_crashes.push_back(report);
+        }
+    }
     if remote_forward::should_forward(request, &active_profile) {
         return remote_forward::forward(request, &active_profile, port, database);
+    }
+    if let Some(response) =
+        crate::cn_comic::route(request, database, cn_override_root, cn_asset_root, port)
+    {
+        return response;
     }
     if let Some(response) = cn::route(
         request,

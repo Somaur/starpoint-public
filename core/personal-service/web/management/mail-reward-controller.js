@@ -3,6 +3,8 @@
 //
 // 此模块从个人服务读取邮件奖励目录, 并把用户选择转换为现有邮件奖励结构.
 
+import { confirmAction } from "/manage/dialogs.js"
+
 // //// 管理邮件奖励目录, 收藏, 选择和快捷发放 [@x380kkm 2026-08-20] ////
 function createElement(tagName, className, text) {
     const node = document.createElement(tagName)
@@ -254,7 +256,7 @@ export function createMailRewardController({ elements, requestApi, runAction, se
             const grant = createElement("button", "button primary", "立即发放")
             grant.type = "button"
             grant.addEventListener("click", () => runAction(grant, async () => {
-                if (!confirm(`向当前存档发放“${preset.name}”?`)) return undefined
+                if (!(await confirmAction(`向当前存档发放“${preset.name}”?`))) return undefined
                 await sendMail({
                     title: preset.name,
                     body: preset.description || "由当前设备的个人服务发放.",

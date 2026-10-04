@@ -188,18 +188,13 @@ fn increment_character_stack(
 }
 
 // //// 构造已有角色的客户端状态增量 [@x380kkm 2026-08-28] ////
-fn create_existing_character_response(
+pub(crate) fn create_existing_character_response(
     character_id: i64,
     stored: &Value,
     server_time: i64,
 ) -> Value {
     let mut response = create_character_response(0, character_id, stored, server_time);
     if let Some(response_object) = response.as_object_mut() {
-        let join_time = character_time(stored.get("join_time"), server_time);
-        let update_time = character_time(stored.get("update_time"), server_time);
-        response_object.insert("create_time".to_owned(), Value::from(join_time.clone()));
-        response_object.insert("join_time".to_owned(), Value::from(join_time));
-        response_object.insert("update_time".to_owned(), Value::from(update_time));
         for field in ["evolution_level", "over_limit_step", "protection", "stack"] {
             if let Some(value) = stored.get(field) {
                 response_object.insert(field.to_owned(), value.clone());
@@ -209,14 +204,6 @@ fn create_existing_character_response(
     response
 }
 // //// /构造已有角色的客户端状态增量 ////
-
-fn character_time(value: Option<&Value>, fallback: i64) -> String {
-    value
-        .and_then(Value::as_i64)
-        .map(format_client_time)
-        .or_else(|| value.and_then(Value::as_str).map(str::to_owned))
-        .unwrap_or_else(|| format_client_time(fallback))
-}
 
 fn add_duplicate_item(
     root: &mut Map<String, Value>,

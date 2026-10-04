@@ -5,6 +5,7 @@
 
 mod campaign;
 mod movie;
+pub(crate) use movie::tutorial_movie;
 mod region;
 
 use crate::cn::{decode_request, msgpack_response_at, server_time};
@@ -628,7 +629,16 @@ pub(crate) fn draw_tutorial_gacha(
         Ok(_) => {}
         Err(code) => return Ok(Err(code)),
     }
-    let character_id = draw_character_id(plan.gacha, 0, false)?;
+    // Android's tutorial preloads only normal_guarantee. Its separate rarity
+    // master is 5% five-star / 95% four-star, regardless of the selected pool's
+    // normal or ten-pull rates. A normal three-star draw causes native C8024.
+    let tutorial: Value = serde_json::from_str(include_str!("../assets/cn-tutorial-gacha.json"))
+        .map_err(|error| PersonalServiceError::new(format!("invalid tutorial gacha contract: {error}")))?;
+    let weights = tutorial["rankRates"].as_array()
+        .and_then(|rates| rates.iter().map(Value::as_f64).collect::<Option<Vec<_>>>())
+        .ok_or_else(|| PersonalServiceError::new("tutorial gacha rarity rates are missing"))?;
+    let rank = select_weighted_index(&weights)? + 1;
+    let character_id = draw_character_at_rank(plan.gacha, rank)?;
     let reward = grant_character(root, viewer_id, character_id, server_time)?;
     Ok(Ok(TutorialGachaDraw {
         character_id,
@@ -749,7 +759,7 @@ fn execute(
             let reward = grant_character(root, body.viewer_id, character_id, server_time)?;
             if reward.joined {
                 if record_character_encyclopedia_state(root, character_id)? {
-                    encyclopedia_info.insert(format!("1{character_id}01"), json!({"read": false}));
+                    encyclopedia_info.insert(character_encyclopedia_key(character_id), json!({"read": false}));
                 }
             }
             let movie_id = movie::draw_movie_id(gacha, character_id)?;
@@ -891,7 +901,7 @@ fn exchange_character(
     let mut encyclopedia_info = Map::new();
     if reward.joined {
         if record_character_encyclopedia_state(root, body.character_id)? {
-            encyclopedia_info.insert(format!("1{}01", body.character_id), json!({"read": false}));
+            encyclopedia_info.insert(character_encyclopedia_key(body.character_id), json!({"read": false}));
         }
     }
     let response = json!({
@@ -1299,8 +1309,19 @@ fn gacha_definition(gacha_id: i64) -> Result<&'static Value, PersonalServiceErro
 
 fn gacha_document() -> Result<&'static Value, PersonalServiceError> {
     let document = CN_GACHA_DATA.get_or_init(|| {
-        serde_json::from_str::<Value>(CN_GACHA_ASSET)
-            .map_err(|error| format!("failed to decode CN gacha asset: {error}"))
+        let mut data = serde_json::from_str::<Value>(CN_GACHA_ASSET)
+            .map_err(|error| format!("failed to decode CN gacha asset: {error}"))?;
+        let policy: Value = serde_json::from_str(include_str!("../../../assets/gacha-local-ticket-policy.json"))
+            .map_err(|error| error.to_string())?;
+        for id in policy["characterWildcardPools"].as_array().ok_or("invalid local ticket policy")? {
+            let id = id.as_i64().ok_or("invalid local ticket pool")?.to_string();
+            let pool = data.get_mut(&id).ok_or("missing local ticket pool")?;
+            if pool["type"] != 0 || pool["pageKind"] != 0 {
+                return Err("local tickets require a normal character pool".to_owned());
+            }
+            pool["wildcardCharacterTicketAvailable"] = Value::Bool(true);
+        }
+        Ok(data)
     });
     let document = document
         .as_ref()
@@ -1504,6 +1525,10 @@ fn draw_character_id(
     guarantee_rank_four_or_higher: bool,
 ) -> Result<i64, PersonalServiceError> {
     let rank = draw_rank(gacha, draw_number, guarantee_rank_four_or_higher)?;
+    draw_character_at_rank(gacha, rank)
+}
+
+fn draw_character_at_rank(gacha: &Value, rank: usize) -> Result<i64, PersonalServiceError> {
     let pool = gacha
         .get("pool")
         .and_then(Value::as_object)
@@ -1640,11 +1665,17 @@ fn duplicate_item_list(duplicate_item: Option<DuplicateCharacterItem>) -> Value 
 }
 
 // //// 构造新角色对应的百科增量 [@x380kkm 2026-08-28] ////
+pub(crate) fn character_encyclopedia_key(character_id: i64) -> String {
+    // The client divides this ID by 100 to look up the keyword master.
+    // Character IDs occupy six digits, including town characters 1 and 10.
+    format!("1{character_id:06}01")
+}
+
 pub(crate) fn record_character_encyclopedia_state(
     root: &mut Map<String, Value>,
     character_id: i64,
 ) -> Result<bool, PersonalServiceError> {
-    let key = format!("1{character_id}01");
+    let key = character_encyclopedia_key(character_id);
     let stored = root
         .entry("encyclopedia_list".to_owned())
         .or_insert_with(|| json!({}))

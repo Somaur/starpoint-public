@@ -48,7 +48,7 @@ const QUEST_MASTER_DEFINITIONS = Object.freeze([
     { name: "ranking_event_single_quest", parent: "ranking_event", category: 11, startIndex: 5, endIndex: 6 },
     { name: "rush_event_quest", parent: "rush_event", category: 24, startIndex: 7, endIndex: 8 },
     { name: "solo_time_attack_event_quest", parent: "solo_time_attack_event", category: 25, startIndex: 6, endIndex: 7 },
-    { name: "hard_multi_event_quest", parent: "hard_multi_event", category: 26, startIndex: 7, endIndex: 8 },
+    { name: "hard_multi_event_quest", parent: "hard_multi_event", category: 26, startIndex: 5, endIndex: 6 },
     { name: "score_attack_event_quest", parent: "score_attack_event", category: 27, startIndex: 7, endIndex: 8 },
     { name: "rush_event_quest_folder", parent: "rush_event", category: 24, startIndex: null, endIndex: null },
 ])

@@ -1980,6 +1980,22 @@ try {
         $null
     }
     Assert-ProtocolLabFile -Path $PatchedSwfPath -Description "最终补丁输出 SWF"
+    if ($EmbeddedPersonalService) {
+        $GachaPreloadClasses = Join-Path $WorkingDirectory "gacha-preload-classes"
+        $GachaPreloadSwf = Join-Path $WorkingDirectory "gacha-preload.swf"
+        $GachaPreloadSource = Join-Path $PSScriptRoot "AndroidGachaOddsPreloadPatch.java"
+        New-Item -ItemType Directory -Force -Path $GachaPreloadClasses | Out-Null
+        Invoke-ClientPatchTool -FilePath $JavacPath -ArgumentList @(
+            "-encoding", "UTF-8", "-cp", $FfdecLibraryJarPath,
+            "-d", $GachaPreloadClasses, $AbcMethodDigestSourcePath, $GachaPreloadSource
+        ) -LogPath (Join-Path $EvidenceDirectory "gacha-preload-compile.log") | Out-Null
+        $GachaPreloadLib = Split-Path -Parent $FfdecLibraryJarPath
+        Invoke-ClientPatchTool -FilePath $JavaPath -ArgumentList @(
+            "-cp", "$GachaPreloadClasses;$GachaPreloadLib\*",
+            "AndroidGachaOddsPreloadPatch", $PatchedSwfPath, $GachaPreloadSwf
+        ) -LogPath (Join-Path $EvidenceDirectory "gacha-preload-patch.log") | Out-Null
+        Copy-Item -LiteralPath $GachaPreloadSwf -Destination $PatchedSwfPath -Force
+    }
     $AssetExtractorPreextractedBundleEvidenceFile = if ($PreextractedBundleMode.PatchAssetExtractorStart) {
         Get-ClientPatchFileEvidence -Path $AssetExtractorPreextractedBundleEvidencePath
     } else {

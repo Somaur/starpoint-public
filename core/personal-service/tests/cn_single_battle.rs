@@ -25,6 +25,438 @@ fn send_battle_request(port: u16, route: &str, body: &Value) -> String {
     )
 }
 
+#[test]
+fn solo_time_rewards_cover_thresholds_failure_replay_restart_and_legacy_clears() {
+    let root = TempDir::new().unwrap();
+    let service = PersonalService::start(root.path(), 0).unwrap();
+    set_virtual_time(&service, "2030-01-01T12:00:00.000Z");
+    let viewer = decode_response::<SignupData>(&send_request(service.port(),
+        "/api/index.php/tool/signup", &encode_request(&SignupRequest { device_id: 991122 })))
+        .data_headers.viewer_id;
+    let db = Connection::open(root.path().join("personal-service.sqlite3")).unwrap();
+    db.execute("UPDATE player_snapshots SET data_json=json_set(data_json, '$.user_info.stamina',9999)", []).unwrap();
+    drop(db);
+    let stages: Value = serde_json::from_str(include_str!("../assets/cn-solo-time-rewards.json")).unwrap();
+    assert_eq!(stages.as_array().unwrap().len(), 222);
+    let initial = load_player(service.port(), viewer);
+    let initial_money = initial["user_info"]["free_vmoney"].as_i64().unwrap();
+    let point = |p: &Value| p["user_daily_challenge_point_list"].as_array().unwrap().iter()
+        .find(|p| p["id"] == 5001).unwrap()["point"].as_i64().unwrap();
+    let initial_point = point(&initial);
+    // Failure and abort never create a time record, pay milestone rewards, or consume a challenge.
+    assert!(start_battle_for(service.port(), viewer, 25, 1001, "solo-fail", false).starts_with("HTTP/1.1 200"));
+    let failed = decode_response::<Value>(&send_battle_request(service.port(), "finish", &json!({
+        "viewer_id":viewer,"api_count":1,"is_restored":false,"continue_count":0,
+        "elapsed_time_ms":1,"quest_id":1001,"play_id":"solo-fail","category":25,
+        "score":0,"add_mana":0,"is_accomplished":false,
+        "statistics":{"clear_phase":0,"party":{"characters":[{"id":1},null,null],"unison_characters":[null,null,null]}}
+    })));
+    assert!(failed.data["solo_time_attack_event"].is_null());
+    assert_eq!(point(&load_player(service.port(), viewer)), initial_point);
+    assert!(start_battle_for(service.port(), viewer, 25, 1001, "solo-abort", false).starts_with("HTTP/1.1 200"));
+    assert!(abort_battle(service.port(), viewer, "solo-abort").starts_with("HTTP/1.1 200"));
+    assert_eq!(load_player(service.port(), viewer)["user_info"]["free_vmoney"], failed.data["user_info"]["free_vmoney"]);
+    // First slow clear is above every threshold.
+    assert!(start_battle_for(service.port(), viewer, 25, 1001, "solo-slow", false).starts_with("HTTP/1.1 200"));
+    let slow = decode_response::<Value>(&finish_battle_for(service.port(), viewer, 25, 1001, "solo-slow", 420001, 100));
+    assert_eq!(slow.data["solo_time_attack_event"]["reward_ids"], json!([]));
+    assert!(slow.data["solo_time_attack_event"]["previous_best_elapsed_time_ms"].is_null());
+    // Exact threshold pays once; failure above did not steal the first record.
+    assert!(start_battle_for(service.port(), viewer, 25, 1001, "solo-border", false).starts_with("HTTP/1.1 200"));
+    let border = decode_response::<Value>(&finish_battle_for(service.port(), viewer, 25, 1001, "solo-border", 420000, 101));
+    assert_eq!(border.data["solo_time_attack_event"]["reward_ids"], json!([1]));
+    assert_eq!(border.data["solo_time_attack_event"]["previous_best_elapsed_time_ms"], 420001);
+    assert!(border.data["user_info"]["free_vmoney"].as_i64().unwrap() >= slow.data["user_info"]["free_vmoney"].as_i64().unwrap() + 10);
+    assert_eq!(point(&border.data), initial_point - 2);
+    service.stop().unwrap();
+    let service = PersonalService::start(root.path(), 0).unwrap();
+    let replay = decode_response::<Value>(&finish_battle_for(service.port(), viewer, 25, 1001, "solo-border", 420000, 101));
+    assert_eq!(replay.data, border.data);
+    // Faster record pays all remaining stages, including titles, across all six quests.
+    for quest in 1001..=1006 {
+        let play = format!("solo-fast-{quest}");
+        assert!(start_battle_for(service.port(), viewer, 25, quest, &play, false).starts_with("HTTP/1.1 200"));
+        let fast = decode_response::<Value>(&finish_battle_for(service.port(), viewer, 25, quest, &play, 60000, 999));
+        let solo = &fast.data["solo_time_attack_event"];
+        assert_eq!(solo["reward_ids"].as_array().unwrap().len(), if quest == 1001 { 36 } else { 37 });
+        assert_eq!(solo["new_degree_ids"].as_array().unwrap().len(), 2);
+        assert_eq!(solo["main_character_ids"]["0"], 1);
+        let money = fast.data["user_info"]["free_vmoney"].clone();
+        let play = format!("solo-repeat-{quest}");
+        assert!(start_battle_for(service.port(), viewer, 25, quest, &play, false).starts_with("HTTP/1.1 200"));
+        let repeat = decode_response::<Value>(&finish_battle_for(service.port(), viewer, 25, quest, &play, 180000, 200));
+        assert_eq!(repeat.data["solo_time_attack_event"]["reward_ids"], json!([]));
+        assert_eq!(repeat.data["solo_time_attack_event"]["previous_best_elapsed_time_ms"], 60000);
+        assert_eq!(repeat.data["solo_time_attack_event"]["previous_best_elapsed_score"], 999);
+        assert!(repeat.data["user_info"]["free_vmoney"].as_i64().unwrap() >= money.as_i64().unwrap());
+    }
+    let paid_money = load_player(service.port(), viewer)["user_info"]["free_vmoney"].as_i64().unwrap();
+    assert!(paid_money >= initial_money + 6 * 1000); // Normal missions can also pay stars.
+    // An older build may already have best times but no paid-reward ledger.
+    let db = Connection::open(root.path().join("personal-service.sqlite3")).unwrap();
+    db.execute("UPDATE player_snapshots SET data_json=json_remove(data_json, '$.cn_activity_state.event_families.solo_time_attack')", []).unwrap();
+    drop(db);
+    assert!(start_battle_for(service.port(), viewer, 25, 1001, "solo-legacy", false).starts_with("HTTP/1.1 200"));
+    let legacy = decode_response::<Value>(&finish_battle_for(service.port(), viewer, 25, 1001, "solo-legacy", 500000, 10));
+    assert_eq!(legacy.data["solo_time_attack_event"]["reward_ids"].as_array().unwrap().len(), 37);
+    assert!(legacy.data["user_info"]["free_vmoney"].as_i64().unwrap() >= paid_money + 1000);
+    service.stop().unwrap();
+}
+
+#[test]
+fn all_android_score_quests_persist_timeout_records_at_their_own_thresholds() {
+    let root = TempDir::new().unwrap();
+    let service = PersonalService::start(root.path(), 0).unwrap();
+    set_virtual_time(&service, "2030-01-01T12:00:00.000Z");
+    let viewer = decode_response::<SignupData>(&send_request(service.port(),
+        "/api/index.php/tool/signup", &encode_request(&SignupRequest { device_id: 992233 })))
+        .data_headers.viewer_id;
+    let db = Connection::open(root.path().join("personal-service.sqlite3")).unwrap();
+    db.execute("UPDATE player_snapshots SET data_json=json_set(data_json, '$.user_info.stamina',999999)", []).unwrap();
+    drop(db);
+    let stages: Value = serde_json::from_str(include_str!("../assets/cn-score-milestones.json")).unwrap();
+    let ranks: Value = serde_json::from_str(include_str!("../assets/cn-score-quest-ranks.json")).unwrap();
+    let mut thresholds = std::collections::BTreeMap::<i64, i64>::new();
+    for stage in stages.as_array().unwrap() {
+        let score = stage["score"].as_i64().unwrap();
+        thresholds.entry(stage["quest_id"].as_i64().unwrap()).and_modify(|s| *s = (*s).min(score)).or_insert(score);
+    }
+    assert_eq!(thresholds.len(), 123);
+    assert_eq!(thresholds[&1055], 99_610); // The legacy fixture incorrectly used 1,050,000.
+    for (quest, score) in thresholds {
+        let db = Connection::open(root.path().join("personal-service.sqlite3")).unwrap();
+        db.execute("UPDATE player_snapshots SET data_json=json_set(data_json, '$.user_info.stamina',999)", []).unwrap();
+        drop(db);
+        let play = format!("score-timeout-{quest}");
+        let started = decode_response::<Value>(&start_battle_for(service.port(), viewer, 27, quest, &play, false));
+        assert_eq!(started.data["user_info"]["stamina"], 989, "quest {quest}: Android requires 10 stamina");
+        let result = decode_response::<Value>(&send_battle_request(service.port(), "finish", &json!({
+            "viewer_id":viewer,"api_count":1,"is_restored":false,"continue_count":0,
+            "elapsed_time_ms":180000,"quest_id":quest,"play_id":play,"category":27,
+            "score":score,"add_mana":0,"is_accomplished":false,
+            "statistics":{"clear_phase":1,"party":{"characters":[{"id":1},null,null],"unison_characters":[null,null,null]}}
+        })));
+        assert!(!result.data["score_attack_event"]["reward_ids"].as_array().unwrap().is_empty(), "quest {quest}");
+        let expected_rank = ranks[quest.to_string()].as_array().unwrap().iter().enumerate()
+            .filter(|(_, t)| score >= t.as_i64().unwrap()).map(|(i, _)| i + 2).max().unwrap_or(1);
+        assert_eq!(result.data["clear_rank"], expected_rank, "quest {quest}");
+        let player = load_player(service.port(), viewer);
+        let progress = player["quest_progress"]["27"].as_array().unwrap().iter().find(|p| p["quest_id"] == quest).unwrap();
+        assert_eq!(progress["finished"], true, "quest {quest}");
+        assert_eq!(progress["high_score"], score, "quest {quest}");
+        assert_eq!(progress["clear_rank"], expected_rank, "quest {quest}");
+    }
+    service.stop().unwrap();
+    let service = PersonalService::start(root.path(), 0).unwrap();
+    assert_eq!(load_player(service.port(), viewer)["quest_progress"]["27"].as_array().unwrap().len(), 123);
+    service.stop().unwrap();
+}
+
+// Exercise one real fixture battle in every supported battle category. This
+// covers protocol/settlement contracts; phone tests cover rendering and combat.
+#[test]
+fn all_battle_categories_settle_and_replay_without_duplicate_rewards() {
+    let root = TempDir::new().unwrap();
+    let service = PersonalService::start(root.path(), 0).unwrap();
+    set_virtual_time(&service, "2030-01-01T12:00:00.000Z");
+    let viewer_id = decode_response::<SignupData>(&send_request(
+        service.port(),
+        "/api/index.php/tool/signup",
+        &encode_request(&SignupRequest { device_id: 9090 }),
+    ))
+    .data_headers
+    .viewer_id;
+    let fixture: Value =
+        serde_json::from_str(include_str!("../assets/cn-single-battle.json")).unwrap();
+    let mut cases = std::collections::BTreeMap::new();
+    for quest in fixture["quests"].as_object().unwrap().values() {
+        if quest["category"] == 3
+            || (quest["s_plus_rank_time"].as_i64().unwrap_or(0) <= 0
+                && quest["stamina_cost"].as_i64().unwrap_or(0) <= 0)
+            || quest["has_fixed_party"] == true
+        {
+            continue;
+        }
+        cases
+            .entry(quest["category"].as_i64().unwrap())
+            .or_insert(quest);
+    }
+    assert_eq!(cases.len(), 20);
+    let db = Connection::open(root.path().join("personal-service.sqlite3")).unwrap();
+    let serialized: String = db
+        .query_row("SELECT data_json FROM player_snapshots", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    let mut player: Value = serde_json::from_str(&serialized).unwrap();
+    player["user_info"]["stamina"] = json!(999999);
+    for quest in cases.values() {
+        if let Some(item_id) = quest["entry_item_id"].as_i64() {
+            player["item_list"][item_id.to_string()] = json!(99999);
+        }
+        for cost in quest["completion_items"].as_array().into_iter().flatten() {
+            player["item_list"][cost["id"].as_i64().unwrap().to_string()] = json!(99999);
+        }
+    }
+    db.execute(
+        "UPDATE player_snapshots SET data_json = ?1",
+        [serde_json::to_string(&player).unwrap()],
+    )
+    .unwrap();
+    drop(db);
+    for (category, quest) in cases {
+        let quest_id = quest["quest_id"].as_i64().unwrap();
+        let play_id = format!("category-qa-{category}");
+        let start = start_battle_for(
+            service.port(),
+            viewer_id,
+            category,
+            quest_id,
+            &play_id,
+            false,
+        );
+        assert!(
+            start.starts_with("HTTP/1.1 200 OK"),
+            "category {category}: {start}"
+        );
+        let result = finish_battle_for(
+            service.port(),
+            viewer_id,
+            category,
+            quest_id,
+            &play_id,
+            1000,
+            100000,
+        );
+        assert!(
+            result.starts_with("HTTP/1.1 200 OK"),
+            "category {category}: {result}"
+        );
+        let finished = decode_response::<Value>(&result);
+        assert!(
+            finished.data["user_info"].is_object(),
+            "category {category}: missing settlement"
+        );
+        let before = load_player(service.port(), viewer_id);
+        let replay = decode_response::<Value>(&finish_battle_for(
+            service.port(),
+            viewer_id,
+            category,
+            quest_id,
+            &play_id,
+            1000,
+            100000,
+        ));
+        assert_eq!(
+            replay.data, finished.data,
+            "category {category}: replay differs"
+        );
+        let after = load_player(service.port(), viewer_id);
+        assert_eq!(
+            after["item_list"], before["item_list"],
+            "category {category}: double item reward"
+        );
+        assert_eq!(
+            after["user_info"]["free_vmoney"],
+            before["user_info"]["free_vmoney"]
+        );
+        assert!(after["unfinished_quest_list"]
+            .as_array()
+            .unwrap()
+            .is_empty());
+    }
+    service.stop().unwrap();
+}
+
+#[test]
+fn battle_notifications_exclude_inactive_and_wrong_difficulty_missions() {
+    let root = TempDir::new().unwrap();
+    let service = PersonalService::start(root.path(), 0).unwrap();
+    set_virtual_time(&service, "2019-12-02T12:00:00.000Z");
+    let viewer_id = decode_response::<SignupData>(&send_request(
+        service.port(),
+        "/api/index.php/tool/signup",
+        &encode_request(&SignupRequest { device_id: 9091 }),
+    ))
+    .data_headers
+    .viewer_id;
+    let db = Connection::open(root.path().join("personal-service.sqlite3")).unwrap();
+    db.execute(
+        "UPDATE player_snapshots SET data_json = json_set(data_json, '$.user_info.stamina', 999, '$.user_info.rank_point', 2000000)",
+        [],
+    )
+    .unwrap();
+    drop(db);
+    let start = start_battle_for(
+        service.port(),
+        viewer_id,
+        2,
+        1014001,
+        "mission-window-qa",
+        false,
+    );
+    assert!(start.starts_with("HTTP/1.1 200 OK"), "{start}");
+    let finished = decode_response::<Value>(&finish_battle_for(
+        service.port(),
+        viewer_id,
+        2,
+        1014001,
+        "mission-window-qa",
+        1000,
+        100000,
+    ));
+    let catalog: Value =
+        serde_json::from_str(include_str!("../assets/cn-mission-master.json")).unwrap();
+    let now = 1575288000_i64;
+    let db = Connection::open(root.path().join("personal-service.sqlite3")).unwrap();
+    let serialized: String = db
+        .query_row("SELECT data_json FROM player_snapshots", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    let settled: Value = serde_json::from_str(&serialized).unwrap();
+    drop(db);
+    // No mission-page request has occurred: the action itself must pay and
+    // return the current wallet, inventory and receipts.
+    assert!(!settled["mission_stage_receipts"]
+        .as_object()
+        .unwrap()
+        .is_empty());
+    assert!(finished.data["user_info"]["free_vmoney"].as_i64().unwrap() >= 700);
+    for field in [
+        "free_vmoney",
+        "vmoney",
+        "free_mana",
+        "paid_mana",
+        "exp_pool",
+    ] {
+        assert_eq!(
+            finished.data["user_info"][field], settled["user_info"][field],
+            "{field}"
+        );
+    }
+    assert_eq!(finished.data["item_list"], settled["item_list"]);
+    for notification in finished.data["mission_info"].as_array().unwrap() {
+        let category = notification["mission_category_id"].as_i64().unwrap();
+        let id = notification["mission_id"].as_i64().unwrap();
+        let mission = catalog["categories"][category.to_string()]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|m| m["id"] == id)
+            .unwrap();
+        assert!(
+            mission["enable_start_time"]
+                .as_i64()
+                .map_or(true, |start| now >= start),
+            "future mission was announced: {category}:{id}"
+        );
+        assert!(
+            mission["enable_end_time"]
+                .as_i64()
+                .map_or(true, |end| now <= end),
+            "expired mission was announced: {category}:{id}"
+        );
+        assert!(
+            mission["quest_rank_id"]
+                .as_i64()
+                .map_or(true, |rank| rank == 2),
+            "wrong boss difficulty: {category}:{id}"
+        );
+    }
+    service.stop().unwrap();
+    let service = PersonalService::start(root.path(), 0).unwrap();
+    let replay = decode_response::<Value>(&finish_battle_for(
+        service.port(),
+        viewer_id,
+        2,
+        1014001,
+        "mission-window-qa",
+        1000,
+        100000,
+    ));
+    assert_eq!(replay.data, finished.data);
+    let loaded = load_player(service.port(), viewer_id);
+    assert_eq!(
+        loaded["user_info"]["free_vmoney"],
+        settled["user_info"]["free_vmoney"]
+    );
+    assert_eq!(loaded["item_list"], settled["item_list"]);
+    service.stop().unwrap();
+}
+
+#[test]
+fn failed_finish_rolls_back_rewards_progress_and_history_before_retry() {
+    for (category, quest_id) in [(1, 1_001_002), (25, 1001), (27, 1001)] {
+    let root = TempDir::new().unwrap();
+    let service = PersonalService::start(root.path(), 0).unwrap();
+    set_virtual_time(&service, "2030-01-01T12:00:00.000Z");
+    let viewer_id = decode_response::<SignupData>(&send_request(
+        service.port(),
+        "/api/index.php/tool/signup",
+        &encode_request(&SignupRequest { device_id: 9092 }),
+    ))
+    .data_headers
+    .viewer_id;
+    assert!(start_battle_for(service.port(), viewer_id, category, quest_id, "atomic", false).starts_with("HTTP/1.1 200 OK"));
+    let db = Connection::open(root.path().join("personal-service.sqlite3")).unwrap();
+    let before: String = db
+        .query_row("SELECT data_json FROM player_snapshots", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    let tables = [
+        "player_mission_counters",
+        "player_mission_progress",
+        "player_receive_history",
+    ];
+    let counts = tables.map(|table| {
+        db.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| {
+            row.get::<_, i64>(0)
+        })
+        .unwrap()
+    });
+    db.execute_batch("CREATE TRIGGER fail_finish BEFORE INSERT ON single_battle_finish_receipts BEGIN SELECT RAISE(ABORT, 'injected finish failure'); END;").unwrap();
+    let failed = finish_battle_for(service.port(), viewer_id, category, quest_id, "atomic", 60_000, 1_000_000_000);
+    assert!(failed.starts_with("HTTP/1.1 500"), "{failed}");
+    let after: String = db
+        .query_row("SELECT data_json FROM player_snapshots", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    assert_eq!(
+        after, before,
+        "failed receipt must not save battle or mission rewards"
+    );
+    for (table, count) in tables.into_iter().zip(counts) {
+        assert_eq!(
+            db.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| row
+                .get::<_, i64>(0))
+                .unwrap(),
+            count,
+            "{table}"
+        );
+    }
+    assert_eq!(
+        db.query_row("SELECT COUNT(*) FROM active_single_quests", [], |row| row
+            .get::<_, i64>(
+            0
+        ))
+        .unwrap(),
+        1
+    );
+    db.execute_batch("DROP TRIGGER fail_finish").unwrap();
+    drop(db);
+    let finished = decode_response::<Value>(&finish_battle_for(service.port(), viewer_id, category, quest_id, "atomic", 60_000, 1_000_000_000));
+    if category == 1 { assert!(finished.data["user_info"]["free_vmoney"].as_i64().unwrap() >= 1515); }
+    if category == 25 { assert_eq!(finished.data["solo_time_attack_event"]["reward_ids"].as_array().unwrap().len(),37); }
+    if category == 27 { assert_eq!(finished.data["score_attack_event"]["reward_ids"].as_array().unwrap().len(),51); }
+    let replay = decode_response::<Value>(&finish_battle_for(service.port(), viewer_id, category, quest_id, "atomic", 60_000, 1_000_000_000));
+    assert_eq!(finished.data, replay.data);
+    service.stop().unwrap();
+    }
+}
+
 fn start_battle(port: u16, viewer_id: i64) -> String {
     start_battle_with_boost(port, viewer_id, false)
 }
@@ -268,13 +700,22 @@ fn persists_and_finishes_cn_single_battle() {
     );
     let finish_response = finish_battle(service.port(), viewer_id);
     let finished = decode_response::<Value>(&finish_response);
+    assert!(
+        !finished.data["mission_info"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|mission| { mission["mission_category_id"] == 1 && mission["mission_id"] == 42 }),
+        "clearing 1-1-2 must not complete the 1-4-2 mission"
+    );
     assert_eq!(finished.data["clear_rank"].as_i64(), Some(5));
     assert_eq!(finished.data["before_rank_point"].as_i64(), Some(10));
     assert_eq!(finished.data["user_info"]["rank_point"].as_i64(), Some(13));
     assert_eq!(finished.data["user_info"]["free_mana"].as_i64(), Some(1027));
+    // The third recorded single clear also pays the current daily mission.
     assert_eq!(
         finished.data["user_info"]["free_vmoney"].as_i64(),
-        Some(1450),
+        Some(1465),
     );
     assert_eq!(
         finished.data["rewards"]["reward_pool_exp"].as_i64(),
@@ -324,8 +765,18 @@ fn persists_and_finishes_cn_single_battle() {
         "1.4.99-single-battle",
     );
     let loaded = decode_response::<Value>(&load_response);
+    let cleared = loaded.data["quest_progress"]["1"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|q| q["quest_id"] == 1001002)
+        .unwrap();
+    assert_eq!(
+        cleared["ss_clear_count"], 2,
+        "one imported SS plus this clear; retried settlement and restart cannot count twice"
+    );
     assert_eq!(loaded.data["user_info"]["free_mana"].as_i64(), Some(1027));
-    assert_eq!(loaded.data["user_info"]["free_vmoney"].as_i64(), Some(1450));
+    assert_eq!(loaded.data["user_info"]["free_vmoney"].as_i64(), Some(1465));
     assert_eq!(loaded.data["user_info"]["rank_point"].as_i64(), Some(13));
     assert_eq!(
         loaded.data["user_character_list"]["1"]["exp"].as_i64(),
@@ -354,6 +805,14 @@ fn persists_and_finishes_cn_single_battle() {
         .expect("player snapshot is stored");
     let stored_snapshot =
         serde_json::from_str::<Value>(&stored_snapshot).expect("player snapshot is JSON");
+    let mode_progress = stored_snapshot["quest_progress"]["1"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| entry["quest_id"] == 1_001_002)
+        .unwrap();
+    assert_eq!(mode_progress["single_clear_count"], 1);
+    assert_eq!(mode_progress["multi_clear_count"], 0);
     assert_eq!(stored_snapshot["character_clear_counts"]["1"], 1);
     assert_eq!(stored_snapshot["character_leader_clear_counts"]["1"], 1);
     assert_eq!(
@@ -488,6 +947,9 @@ fn applies_drop_multiplier_to_challenge_dungeon_rare_pool_items() {
         &encode_request(&SignupRequest { device_id: 30 }),
     ));
     let viewer_id = signup.data_headers.viewer_id;
+    let db = Connection::open(root.path().join("personal-service.sqlite3")).unwrap();
+    db.execute("UPDATE player_snapshots SET data_json = json_set(data_json, '$.item_list.500000', 1)", []).unwrap();
+    drop(db);
     let before = load_player(service.port(), viewer_id);
     let item_ids = [
         (2_101, 42),
@@ -660,11 +1122,11 @@ fn settles_carnival_raid_rush_and_score_attack_quests() {
     assert_eq!(carnival.data["category_id"], 22);
     assert_eq!(
         carnival.data["carnival_event"]["score"]["difficulty_bonus"],
-        2_000
+        1_000_000
     );
     assert_eq!(
         carnival.data["carnival_event"]["score"]["time_bonus"],
-        8_000
+        1_700_000
     );
 
     set_virtual_time(&service, "2030-01-02T12:00:00.000Z");
@@ -771,7 +1233,9 @@ fn settles_carnival_raid_rush_and_score_attack_quests() {
         .as_array()
         .unwrap()
         .is_empty());
-    assert_eq!(score_attack.data["item_list"]["40501"], 9);
+    assert_eq!(score_attack.data["item_list"]["40501"], 23);
+    assert_eq!(score_attack.data["item_list"]["40502"], 40);
+    assert_eq!(score_attack.data["score_attack_event"]["reward_ids"].as_array().unwrap().len(), 51);
     service.stop().expect("service stops cleanly");
 
     let restarted = PersonalService::start(root.path(), 0).expect("service restarts");
@@ -792,7 +1256,7 @@ fn settles_carnival_raid_rush_and_score_attack_quests() {
         .as_array()
         .is_some_and(|records| records
             .iter()
-            .any(|record| { record["folder_id"] == 1 && record["best_score"] == 10_000 })));
+            .any(|record| { record["folder_id"] == 1 && record["best_score"] == 2_700_000 })));
     let raid_state = decode_response::<Value>(&send_request(
         restarted.port(),
         "/api/index.php/event/raid/summary",
@@ -1056,3 +1520,62 @@ fn creates_battle_recovery_fields_and_rejects_unidentified_state() {
     assert_eq!(active_battle_count, 0);
 }
 // //// /验证单机战斗恢复字段和身份状态清理 ////
+
+#[test]
+fn completion_items_and_ss_rewards_survive_abort_failure_replay_and_restart() {
+    let root = TempDir::new().unwrap();
+    let service = PersonalService::start(root.path(), 0).unwrap();
+    set_virtual_time(&service, "2030-01-01T12:00:00.000Z");
+    let viewer = decode_response::<SignupData>(&send_request(service.port(), "/api/index.php/tool/signup", &encode_request(&SignupRequest { device_id: 9191 }))).data_headers.viewer_id;
+    let db = Connection::open(root.path().join("personal-service.sqlite3")).unwrap();
+    db.execute("UPDATE player_snapshots SET data_json = json_set(data_json, '$.user_info.stamina', 9999, '$.item_list.500000', 1, '$.item_list.60001', 1)", []).unwrap();
+    drop(db);
+    let before = load_player(service.port(), viewer);
+    assert!(start_battle_for(service.port(), viewer, 13, 2003, "treasure-abort", false).starts_with("HTTP/1.1 200 OK"));
+    assert_eq!(load_player(service.port(), viewer)["item_list"]["500000"], 1);
+    assert!(abort_battle(service.port(), viewer, "treasure-abort").starts_with("HTTP/1.1 200 OK"));
+    assert_eq!(load_player(service.port(), viewer)["item_list"]["500000"], 1);
+    assert!(start_battle_for(service.port(), viewer, 13, 2003, "treasure-fail", false).starts_with("HTTP/1.1 200 OK"));
+    let failed = send_battle_request(service.port(), "finish", &json!({
+        "viewer_id": viewer, "api_count": 1, "category": 13, "quest_id": 2003, "play_id": "treasure-fail", "is_restored": false, "continue_count": 0,
+        "elapsed_time_ms": 1000, "score": 0, "add_mana": 0, "is_accomplished": false,
+        "statistics": {"clear_phase": 0, "zones": [], "party": {"characters": [{"id":1},null,null], "unison_characters": [null,null,null], "equipments": [null,null,null], "ability_soul_ids": [null,null,null]}}
+    }));
+    assert!(failed.starts_with("HTTP/1.1 200 OK"), "{failed}");
+    let failed_data = decode_response::<Value>(&failed).data;
+    assert_eq!(failed_data["item_list"]["500000"], 1);
+    assert_eq!(failed_data["item_list"]["59"].as_i64().unwrap_or(0), before["item_list"]["59"].as_i64().unwrap_or(0));
+    assert!(start_battle_for(service.port(), viewer, 13, 2003, "treasure-clear", false).starts_with("HTTP/1.1 200 OK"));
+    service.stop().unwrap();
+    let service = PersonalService::start(root.path(), 0).unwrap();
+    let cleared = finish_battle_for(service.port(), viewer, 13, 2003, "treasure-clear", 1000, 1000000);
+    assert!(cleared.starts_with("HTTP/1.1 200 OK"), "{cleared}");
+    let settled = decode_response::<Value>(&cleared).data;
+    assert_eq!(settled["item_list"]["500000"], 0);
+    assert_eq!(settled["item_list"]["59"].as_i64().unwrap(), before["item_list"]["59"].as_i64().unwrap_or(0) + 10);
+    service.stop().unwrap();
+    let service = PersonalService::start(root.path(), 0).unwrap();
+    let replay = decode_response::<Value>(&finish_battle_for(service.port(), viewer, 13, 2003, "treasure-clear", 1000, 1000000)).data;
+    assert_eq!(replay, settled);
+    let state = load_player(service.port(), viewer);
+    assert_eq!(state["item_list"]["500000"], 0);
+    assert_eq!(state["item_list"]["59"], settled["item_list"]["59"]);
+    assert!(start_battle_for(service.port(), viewer, 13, 2003, "treasure-empty", false).starts_with("HTTP/1.1 400 Bad Request"));
+    assert_eq!(load_player(service.port(), viewer)["user_info"]["stamina"], state["user_info"]["stamina"]);
+    // Once costs are paid by unlock. The incomplete progress row must not
+    // suppress the first-clear reward or cause another key deduction.
+    let unlocked = send_request(service.port(), "/api/index.php/quest/unlock", &encode_request(&json!({"viewer_id":viewer,"category":18,"quest_id":400001102})));
+    assert!(unlocked.starts_with("HTTP/1.1 200 OK"), "{unlocked}");
+    assert_eq!(load_player(service.port(), viewer)["item_list"]["60001"], 0);
+    assert!(start_battle_for(service.port(), viewer, 18, 400001102, "story-once", false).starts_with("HTTP/1.1 200 OK"));
+    assert!(finish_battle_for(service.port(), viewer, 18, 400001102, "story-once", 1000, 10000).starts_with("HTTP/1.1 200 OK"));
+    let story_clear = load_player(service.port(), viewer);
+    assert_eq!(story_clear["item_list"]["60001"], 0);
+    assert!(!story_clear["user_equipment_list"]["5060018"].is_null(), "unlock must not suppress the first-clear weapon");
+    service.stop().unwrap();
+    let service = PersonalService::start(root.path(), 0).unwrap();
+    assert!(start_battle_for(service.port(), viewer, 18, 400001102, "story-repeat", false).starts_with("HTTP/1.1 200 OK"));
+    assert!(finish_battle_for(service.port(), viewer, 18, 400001102, "story-repeat", 1000, 10000).starts_with("HTTP/1.1 200 OK"));
+    assert_eq!(load_player(service.port(), viewer)["item_list"]["60001"], 0);
+    service.stop().unwrap();
+}

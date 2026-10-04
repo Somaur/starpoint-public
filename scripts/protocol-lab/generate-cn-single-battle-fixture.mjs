@@ -6,6 +6,7 @@
 import { createHash } from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
+import { applyAndroidBattleContract } from "./apply-cn-battle-contract.mjs"
 
 const QUEST_SOURCES = [
     { name: "main_quest", category: 1, entryCategory: 1, expectedCount: 419 },
@@ -244,6 +245,7 @@ function normalizeQuest(context) {
         raid_event_id: descriptor.name === "raid_event_quest" ? Math.trunc(Number(questId) / 1000) : undefined,
         carnival_event_id: carnivalScore?.event_id,
         carnival_folder_id: carnivalScore?.folder_id,
+        carnival_legacy_folder_id: carnivalScore?.legacy_folder_id,
         carnival_difficulty_score: carnivalScore?.difficulty_score,
         carnival_time_limit_ms: carnivalScore?.time_limit_ms,
         ...entry,
@@ -267,7 +269,7 @@ function loadSourceAssets(assetRoot) {
         rareRewardGroups: readJson(assetRoot, "rare_score_reward"),
         rewardElementMap: readJson(assetRoot, "reward_element_map"),
         entryCosts: readJson(assetRoot, "quest_entry_costs"),
-        carnivalScores: readJson(assetRoot, "carnival_event_quest_scores"),
+        carnivalScores: JSON.parse(fs.readFileSync(new URL("../../core/personal-service/assets/cn-carnival-quest-scores.json", import.meta.url), "utf8")),
         scoreAttackBorderRewards: readJson(assetRoot, "score_attack_border_reward"),
     }
     requireSourceCount("character", assets.characters, EXPECTED_CHARACTER_COUNT)
@@ -403,7 +405,8 @@ function sortObjectKeys(value) {
 function main() {
     const assetRoot = requiredArgument("--asset-root")
     const outputPath = requiredArgument("--output")
-    const fixture = buildFixture(loadSourceAssets(assetRoot))
+    const assets = loadSourceAssets(assetRoot)
+    const fixture = applyAndroidBattleContract(buildFixture(assets), assets.clearRewards)
     const serialized = `${JSON.stringify(sortObjectKeys(fixture))}\n`
     fs.mkdirSync(path.dirname(outputPath), { recursive: true })
     fs.writeFileSync(outputPath, serialized, "utf8")

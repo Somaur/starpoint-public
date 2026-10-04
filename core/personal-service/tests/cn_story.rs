@@ -72,15 +72,13 @@ fn set_unfinished_main_story_progress(root: &Path) {
 fn assert_story_settlement(data: &Value) {
     assert_eq!(data["user_info"]["free_vmoney"], 1_515);
     assert_eq!(data["user_info"]["free_mana"], 1_000);
-    for field in [
-        "character_list",
-        "joined_character_id_list",
-        "equipment_list",
-    ] {
-        assert!(data[field]
-            .as_array()
-            .is_some_and(|values| values.is_empty()));
+    // Common inventory fields now carry the authoritative snapshot so mission
+    // rewards received during the action are visible without reloading.
+    for (field, id) in [("character_list", "character_id"), ("equipment_list", "equipment_id")] {
+        let entries = data[field].as_array().expect("inventory is an array");
+        assert!(entries.iter().all(|entry| entry[id].as_i64().is_some_and(|id| id > 0)));
     }
+    assert_eq!(data["joined_character_id_list"], serde_json::json!([]));
     assert!(data["item_list"]
         .as_object()
         .is_some_and(|items| items.is_empty()));

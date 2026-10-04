@@ -12,6 +12,7 @@ use super::ServiceDatabase;
 use crate::PersonalServiceError;
 use rusqlite::{params, Connection, OptionalExtension, Row, Transaction};
 
+mod maintenance;
 mod mutations;
 mod transfer_tokens;
 
@@ -108,7 +109,15 @@ pub(crate) enum LocalSaveStoreError {
 pub(super) fn migrate(connection: &Connection) -> Result<(), PersonalServiceError> {
     connection
         .execute_batch(
-            "CREATE TABLE IF NOT EXISTS local_save_slots (
+            "CREATE TABLE IF NOT EXISTS deleted_local_save_backups (
+                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 original_slot_id INTEGER NOT NULL,
+                 name TEXT NOT NULL,
+                 data_json TEXT NOT NULL,
+                 deleted_at TEXT NOT NULL,
+                 restored_slot_id INTEGER
+             );
+             CREATE TABLE IF NOT EXISTS local_save_slots (
                  id INTEGER PRIMARY KEY AUTOINCREMENT,
                  account_id INTEGER NOT NULL UNIQUE,
                  name TEXT NOT NULL CHECK (length(trim(name)) BETWEEN 1 AND 64),

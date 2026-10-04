@@ -13,7 +13,7 @@ use super::{
 use crate::database::multiplayer::multiplayer_database_error;
 use crate::database::ServiceDatabase;
 use crate::PersonalServiceError;
-use rusqlite::{params, Connection, OptionalExtension, Transaction};
+use rusqlite::{params, Connection, OptionalExtension};
 
 impl ServiceDatabase {
     // //// 原子提交联机继续费用, 计数和响应收据 [@x380kkm 2026-08-23] ////
@@ -85,7 +85,7 @@ impl ServiceDatabase {
     ) -> Result<Option<MultiplayerBattleReceipt>, PersonalServiceError> {
         let transaction = self
             .connection
-            .transaction()
+            .savepoint()
             .map_err(multiplayer_database_error)?;
         if let Some(receipt) = read_receipt_for_identity(&transaction, "finish", input.identity)? {
             return Ok(Some(receipt));
@@ -230,7 +230,7 @@ fn battle_identity_exists(
 }
 
 fn update_player_snapshot(
-    transaction: &Transaction<'_>,
+    transaction: &Connection,
     account_id: i64,
     snapshot: &str,
 ) -> Result<(), PersonalServiceError> {
@@ -249,7 +249,7 @@ fn update_player_snapshot(
 }
 
 fn delete_active_quest(
-    transaction: &Transaction<'_>,
+    transaction: &Connection,
     identity: MultiplayerBattleIdentity<'_>,
 ) -> Result<usize, PersonalServiceError> {
     transaction
@@ -267,7 +267,7 @@ fn delete_active_quest(
 }
 
 fn delete_battle_player(
-    transaction: &Transaction<'_>,
+    transaction: &Connection,
     identity: MultiplayerBattleIdentity<'_>,
 ) -> Result<usize, PersonalServiceError> {
     transaction
@@ -280,7 +280,7 @@ fn delete_battle_player(
 }
 
 fn complete_room_if_empty(
-    transaction: &Transaction<'_>,
+    transaction: &Connection,
     room_number: &str,
     expiry_anchor_ms: i64,
 ) -> Result<(), PersonalServiceError> {

@@ -35,7 +35,6 @@ const ROUTES: &[(&str, Handler)] = &[
         "/api/index.php/encyclopedia/unlock_keyword",
         encyclopedia_read_keyword,
     ),
-    ("/api/index.php/comic/get_list", comic_get_list),
     ("/api/index.php/history/receive", history_receive),
     ("/api/index.php/history/practice_battle", history_battle),
     (
@@ -126,18 +125,6 @@ struct EncyclopediaReadRequest {
 }
 
 impl HasViewerId for EncyclopediaReadRequest {
-    fn viewer_id(&self) -> i64 {
-        self.viewer_id
-    }
-}
-
-#[derive(Deserialize)]
-struct ComicListRequest {
-    viewer_id: i64,
-    page_index: Option<i64>,
-}
-
-impl HasViewerId for ComicListRequest {
     fn viewer_id(&self) -> i64 {
         self.viewer_id
     }
@@ -360,21 +347,6 @@ fn encyclopedia_read_keyword(
 }
 // //// /保存百科已读状态 ////
 
-// //// 返回空漫画分页 [@x380kkm 2026-08-22] ////
-fn comic_get_list(
-    request: &HttpRequest,
-    database: &mut ServiceDatabase,
-) -> Result<HttpResponse, PersonalServiceError> {
-    let (body, _) = authenticated!(request, database, ComicListRequest);
-    let page_index = body.page_index.unwrap_or_default().max(0);
-    respond(
-        database,
-        body.viewer_id,
-        json!({"comic_list": [], "current_page_index": page_index, "total_count": 0}),
-    )
-}
-// //// /返回空漫画分页 ////
-
 // //// 返回已领取邮件生成的领取记录 [@x380kkm 2026-08-22] ////
 fn history_receive(
     request: &HttpRequest,
@@ -455,23 +427,32 @@ fn profile_degree_list(
         Ok(body) if body.viewer_id > 0 => body,
         Ok(_) | Err(_) => return Ok(error_response("400 Bad Request", "invalid_request_body")),
     };
-    let degree_id = match database.lookup_viewer_session_player(body.viewer_id)? {
+    let degree_ids = match database.lookup_viewer_session_player(body.viewer_id)? {
         ViewerSessionPlayer::InvalidSession => {
             return Ok(error_response("400 Bad Request", "invalid_viewer_session"));
         }
-        ViewerSessionPlayer::Present(snapshot) => decode_player_data(&snapshot.data)?
-            .get("user_info")
-            .and_then(Value::as_object)
-            .and_then(|user_info| user_info.get("degree_id"))
-            .and_then(Value::as_i64)
-            .unwrap_or(1),
-        ViewerSessionPlayer::MissingPlayer | ViewerSessionPlayer::MissingPlayerData(_) => 1,
+        ViewerSessionPlayer::Present(snapshot) => {
+            let data = decode_player_data(&snapshot.data)?;
+            let current = data
+                .get("user_info")
+                .and_then(|info| info.get("degree_id"))
+                .and_then(Value::as_i64)
+                .unwrap_or(1);
+            let mut degrees = vec![1, current];
+            degrees.extend(
+                data.get("earned_degree_ids")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Value::as_i64),
+            );
+            degrees.sort_unstable();
+            degrees.dedup();
+            degrees
+        }
+        ViewerSessionPlayer::MissingPlayer | ViewerSessionPlayer::MissingPlayerData(_) => vec![1],
     };
-    respond(
-        database,
-        body.viewer_id,
-        json!({"degree_ids": [1, degree_id]}),
-    )
+    respond(database, body.viewer_id, json!({"degree_ids": degree_ids}))
 }
 // //// /返回玩家持有的称号编号 ////
 

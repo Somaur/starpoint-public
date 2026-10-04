@@ -831,6 +831,7 @@ fn consumes_daily_payment_and_character_ticket_once() {
     let root = TempDir::new().expect("temporary service directory is created");
     let service = PersonalService::start(root.path(), 0).expect("service starts");
     open_gacha(&service, 1);
+    open_gacha(&service, 2);
     open_gacha(&service, 29);
     let signup = decode_response::<SignupData>(&cn_support::send_request(
         service.port(),
@@ -899,7 +900,7 @@ fn consumes_daily_payment_and_character_ticket_once() {
             payment_type: 3,
             number_of_exec: 1,
             viewer_id,
-            gacha_id: 1,
+            gacha_id: 2,
             r#type: 10,
         }),
     );
@@ -1906,3 +1907,31 @@ fn preserves_coverage_period_in_gacha_draw_response() {
     service.stop().expect("service stops cleanly");
 }
 // //// /验证地区覆盖卡池抽取响应保留客户端有效期 ////
+
+#[test]
+fn launch_pool_consumes_generic_ten_pull_ticket_without_spending_currency() {
+    let root = TempDir::new().unwrap();
+    let service = PersonalService::start(root.path(), 0).unwrap();
+    open_gacha(&service, 1);
+    let signup = decode_response::<SignupData>(&cn_support::send_request(service.port(),
+        "/api/index.php/tool/signup", &encode_request(&SignupRequest { device_id: 705 })));
+    let viewer_id = signup.data_headers.viewer_id;
+    grant_mail_rewards(&service, viewer_id, json!({"itemList":{"999001":2}}));
+    let before = decode_response::<Value>(&cn_support::send_request(service.port(), "/api/index.php/load",
+        &encode_request(&LoadRequest { keychain: viewer_id, viewer_id })));
+    for (api_count, remaining) in [(1,1),(2,0)] {
+        let response = decode_response::<Value>(&cn_support::send_request(service.port(), "/api/index.php/gacha/exec",
+            &encode_request(&ExecuteRequest { api_count, payment_type:3, number_of_exec:1,
+                viewer_id, gacha_id:1, r#type:9 })));
+        assert_eq!(response.data["item_list"]["999001"], remaining);
+        assert_eq!(response.data["draw"].as_array().unwrap().len(), 10);
+        assert_valid_movie_seeds(&response.data);
+        assert_eq!(response.data["user_info"]["free_vmoney"], before.data["user_info"]["free_vmoney"]);
+        assert_eq!(response.data["user_info"]["vmoney"], before.data["user_info"]["vmoney"]);
+    }
+    let empty = cn_support::send_request(service.port(), "/api/index.php/gacha/exec",
+        &encode_request(&ExecuteRequest { api_count:3, payment_type:3, number_of_exec:1,
+            viewer_id, gacha_id:1, r#type:9 }));
+    assert!(empty.ends_with("{\"error\":\"not_enough_tickets\"}"));
+    service.stop().unwrap();
+}

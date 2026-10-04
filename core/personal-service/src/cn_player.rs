@@ -5,6 +5,8 @@
 // 每个账号在 SQLite 中保存独立副本和状态时间字段.
 // load 响应的未完成战斗列表从数据库状态派生.
 
+mod daily_challenge;
+
 use crate::cn_asset::{available_asset_version, ArchiveDigestCache, ClientPlatform};
 use crate::cn_tutorial::create_stored_character;
 use crate::database::UnfinishedQuest;
@@ -63,7 +65,10 @@ const DEFAULT_PARTY_NAMES: [&str; PARTY_SLOTS_PER_GROUP as usize] = [
     "Party A", "Party B", "Party C", "Party D", "Party E", "Party F", "Party G", "Party H",
     "Party I", "Party J",
 ];
-const INTERNAL_PLAYER_STATE_FIELDS: [&str; 15] = [
+const INTERNAL_PLAYER_STATE_FIELDS: [&str; 18] = [
+    "preserve_main_quest_progress",
+    "mission_period_state",
+    "earned_degree_ids",
     "cn_activity_state",
     "character_clear_counts",
     "character_leader_clear_counts",
@@ -93,9 +98,43 @@ pub(crate) fn create_default_player_data(
     server_time: i64,
     client_time: &str,
 ) -> Result<String, PersonalServiceError> {
+    create_player_data(
+        server_time,
+        client_time,
+        std::env::var_os("CN_REFERENCE_PLAYER_BASELINE").is_none(),
+    )
+}
+
+/// Start at the original prologue; never inherit the quick-start tutorial clears.
+pub(crate) fn create_beginner_player_data(
+    server_time: i64,
+    client_time: &str,
+) -> Result<String, PersonalServiceError> {
+    let serialized = create_player_data(server_time, client_time, false)?;
+    let mut player_data = decode_player_data(&serialized)?;
+    let root = response_root(&mut player_data)?;
+    // Legacy quick-start saves repair missing tutorial-era main clears on load.
+    // A real beginner must earn those clears, even after choosing the short prologue.
+    root.insert("preserve_main_quest_progress".to_owned(), Value::Bool(true));
+    let user_info = require_user_info(root)?;
+    user_info.insert("name".to_owned(), Value::from("玩家"));
+    user_info.insert("rank_point".to_owned(), Value::from(0));
+    // The base fixture contains 10 EXP from a captured account, not a tutorial reward.
+    for character in require_characters_mut(root)?.values_mut() {
+        character["exp"] = Value::from(0);
+    }
+    encode_player_data(&player_data)
+}
+
+fn create_player_data(
+    server_time: i64,
+    client_time: &str,
+    skip_tutorial: bool,
+) -> Result<String, PersonalServiceError> {
     let mut player_data = decode_player_data(DEFAULT_PLAYER_DATA)?;
     set_initial_times(&mut player_data, server_time, client_time)?;
-    if std::env::var_os("CN_REFERENCE_PLAYER_BASELINE").is_none() {
+    daily_challenge::synchronize(response_root(&mut player_data)?, server_time, true)?;
+    if skip_tutorial {
         set_completed_tutorial_state(&mut player_data, server_time)?;
     }
     ensure_normal_party_groups(response_root(&mut player_data)?)?;
@@ -124,6 +163,10 @@ pub(crate) fn prepare_player_data(
     ensure_associate_token(response_root(&mut player_data)?);
     update_login_state(&mut player_data, server_time, client_time)?;
     prepare_quest_progress(&mut player_data)?;
+    let root = response_root(&mut player_data)?;
+    if is_tutorial_completed(root) {
+        root.insert("user_tutorial".to_owned(), Value::Null);
+    }
     ensure_normal_party_groups(response_root(&mut player_data)?)?;
     ensure_party_battle_power_fields(&mut player_data)?;
     rebuild_favorite_party_group_list(response_root(&mut player_data)?)?;
@@ -406,7 +449,10 @@ fn prepare_quest_progress(player_data: &mut Value) -> Result<(), PersonalService
                 .any(|tutorial_id| tutorial_id.as_i64() == Some(TRIGGERED_UI_TUTORIAL_ID))
         });
     normalize_existing_quest_progress(root)?;
-    if is_tutorial_completed(root) && ui_tutorial_triggered {
+    if is_tutorial_completed(root)
+        && ui_tutorial_triggered
+        && root.get("preserve_main_quest_progress").and_then(Value::as_bool) != Some(true)
+    {
         ensure_completed_tutorial_quest_progress(root)?;
     }
     Ok(())
@@ -482,7 +528,7 @@ pub(crate) fn normalize_quest_progress_entry(
     Ok(progress)
 }
 
-fn is_tutorial_completed(root: &Map<String, Value>) -> bool {
+pub(crate) fn is_tutorial_completed(root: &Map<String, Value>) -> bool {
     if root
         .get("user_triggered_tutorial")
         .and_then(Value::as_array)
@@ -494,7 +540,20 @@ fn is_tutorial_completed(root: &Map<String, Value>) -> bool {
     {
         return true;
     }
-    matches!(root.get("user_tutorial"), Some(Value::Null))
+    match root.get("user_tutorial") {
+        Some(Value::Null) => true,
+        Some(tutorial) => {
+            // Android's bundled tables end at full step 17 / shortened step 6.
+            // Trigger 12 is a separate UI tutorial and need not run on either route.
+            let end = if tutorial.get("skip_flag").and_then(Value::as_bool) == Some(true) {
+                6
+            } else {
+                17
+            };
+            tutorial.get("tutorial_step").and_then(Value::as_i64).is_some_and(|step| step >= end)
+        }
+        None => false,
+    }
 }
 
 fn ensure_completed_tutorial_quest_progress(
@@ -790,68 +849,6 @@ fn ensure_client_config_fields(player_data: &mut Value) -> Result<(), PersonalSe
 // //// /写入客户端配置字段 ////
 
 // //// 重置每日玩家状态 [@x380kkm 2026-08-23] ////
-fn reset_daily_challenge_points(root: &mut Map<String, Value>) -> Result<(), PersonalServiceError> {
-    let defaults = decode_player_data(DEFAULT_PLAYER_DATA)?;
-    let defaults = defaults
-        .get("user_daily_challenge_point_list")
-        .and_then(Value::as_array)
-        .ok_or_else(|| PersonalServiceError::new("default CN challenge points are missing"))?;
-    let challenge_points = root
-        .entry("user_daily_challenge_point_list".to_owned())
-        .or_insert_with(|| Value::Array(Vec::new()))
-        .as_array_mut()
-        .ok_or_else(|| PersonalServiceError::new("stored CN challenge points are invalid"))?;
-    for default in defaults {
-        let challenge_id = default
-            .get("id")
-            .and_then(Value::as_i64)
-            .ok_or_else(|| PersonalServiceError::new("default CN challenge point id is invalid"))?;
-        let campaign_points = |campaigns: &Value| {
-            campaigns
-                .as_array()
-                .ok_or_else(|| PersonalServiceError::new("CN challenge campaigns are invalid"))?
-                .iter()
-                .try_fold(0_i64, |total, campaign| {
-                    let additional = campaign
-                        .get("additional_point")
-                        .and_then(Value::as_i64)
-                        .ok_or_else(|| {
-                            PersonalServiceError::new("CN challenge campaign point is invalid")
-                        })?;
-                    total.checked_add(additional).ok_or_else(|| {
-                        PersonalServiceError::new("CN challenge campaign points overflow")
-                    })
-                })
-        };
-        let default_campaigns = default.get("campaign_list").ok_or_else(|| {
-            PersonalServiceError::new("default CN challenge campaigns are missing")
-        })?;
-        let base_point = default
-            .get("point")
-            .and_then(Value::as_i64)
-            .ok_or_else(|| PersonalServiceError::new("default CN challenge point is invalid"))?
-            .checked_sub(campaign_points(default_campaigns)?)
-            .ok_or_else(|| PersonalServiceError::new("default CN challenge point underflows"))?;
-        if let Some(stored) = challenge_points
-            .iter_mut()
-            .find(|stored| stored.get("id").and_then(Value::as_i64) == Some(challenge_id))
-        {
-            let stored = stored
-                .as_object_mut()
-                .ok_or_else(|| PersonalServiceError::new("stored CN challenge point is invalid"))?;
-            let campaigns = stored
-                .entry("campaign_list".to_owned())
-                .or_insert_with(|| default_campaigns.clone());
-            let reset_point = base_point
-                .checked_add(campaign_points(campaigns)?)
-                .ok_or_else(|| PersonalServiceError::new("CN challenge point overflows"))?;
-            stored.insert("point".to_owned(), Value::Number(Number::from(reset_point)));
-        } else {
-            challenge_points.push(default.clone());
-        }
-    }
-    Ok(())
-}
 // //// /重置每日玩家状态 ////
 
 fn update_login_state(
@@ -920,9 +917,9 @@ fn update_login_state(
         is_new_day
     };
     if is_new_day {
-        reset_daily_challenge_points(root)?;
         crate::cn_gacha::reset_daily_state(root)?;
     }
+    daily_challenge::synchronize(root, server_time, is_new_day)?;
     require_characters(root)?;
     Ok(())
 }

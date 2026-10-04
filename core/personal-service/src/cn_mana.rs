@@ -21,7 +21,7 @@ use std::sync::OnceLock;
 const MANA_NODE_ASSET: &str = include_str!("../../../assets/mana_node.json");
 const MANA_BOARD2_OPEN_CONDITION_ASSET: &str =
     include_str!("../assets/cn-mana-board2-open-condition.json");
-const JAPAN_STANDARD_OFFSET_MILLISECONDS: i64 = 9 * 60 * 60 * 1_000;
+const CN_STANDARD_OFFSET_MILLISECONDS: i64 = 8 * 60 * 60 * 1_000;
 static MANA_NODE_DATA: OnceLock<Result<Value, String>> = OnceLock::new();
 static MANA_BOARD2_OPEN_CONDITION_DATA: OnceLock<Result<Value, String>> = OnceLock::new();
 
@@ -260,6 +260,7 @@ fn learn_mana_node(
                     Value::Array(mission_delta.mission_info),
                 );
         }
+        crate::cn_mission::sync_reward_response(&mut response, &player_data, server_time);
         return msgpack_response_at(body.viewer_id, false, server_time, response);
     }
     let server_time = server_time(database)?;
@@ -533,7 +534,7 @@ fn parse_condition_timestamp(value: &str) -> Result<Option<i64>, PersonalService
     let timestamp = parse_iso_timestamp(&normalized)
         .ok_or_else(|| PersonalServiceError::new("CN Mana board condition time is invalid"))?;
     timestamp
-        .checked_sub(JAPAN_STANDARD_OFFSET_MILLISECONDS)
+        .checked_sub(CN_STANDARD_OFFSET_MILLISECONDS)
         .map(Some)
         .ok_or_else(|| PersonalServiceError::new("CN Mana board condition time is out of range"))
 }
@@ -681,10 +682,10 @@ mod tests {
     // //// 按角色开放时刻投影 Mana board 2 [@x380kkm 2026-08-28] ////
     #[test]
     fn projects_character_specific_mana_board_time_window() {
-        let before_open = parse_iso_timestamp("2025-02-13T02:59:59.000Z")
+        let before_open = parse_iso_timestamp("2025-02-13T03:59:59.000Z")
             .expect("Mana board time is valid")
             / 1_000;
-        let at_open = parse_iso_timestamp("2025-02-13T03:00:00.000Z")
+        let at_open = parse_iso_timestamp("2025-02-13T04:00:00.000Z")
             .expect("Mana board time is valid")
             / 1_000;
 

@@ -116,6 +116,10 @@ const elements = {
 }
 
 const errorMessages = {
+    local_save_busy: "存档已变化或仍被使用，请退出战斗、切换活动存档后重试。",
+    invalid_save_resources: "资源数量必须是 0 至 99999999 的整数。",
+    invalid_save_edit: "存档修改内容无效，请重新读取数值。",
+    invalid_save_delete: "删除请求无效，请刷新存档列表。",
     save_sync_authentication_failed: "存档服务器拒绝了用户名或密码.",
     save_sync_remote_capacity_exceeded: "存档服务器容量已满.",
     save_sync_remote_conflict: "远端存档已经变化, 请先下载为新槽位后再处理.",

@@ -5,7 +5,7 @@
 
 use super::{
     build_context, compute_progress, current_stage, is_scoped_battle_mission, mission_catalog,
-    scoped_battle_counter_key, MissionKey,
+    mission_is_enabled, quest_battle_counter_key, scoped_battle_counter_key, MissionKey,
 };
 use crate::database::ServiceDatabase;
 use crate::PersonalServiceError;
@@ -39,6 +39,7 @@ pub(crate) fn record_battle_action(
     database: &mut ServiceDatabase,
     account_id: i64,
     quest_category: i64,
+    quest_id: i64,
     is_multi: bool,
     is_accomplished: bool,
     max_skill_chain_count: Option<i64>,
@@ -59,6 +60,15 @@ pub(crate) fn record_battle_action(
     let scoped_counter =
         scoped_battle_counter_update(root, database, account_id, clear_pattern, quest_category)?;
     let mut extra_counters = BTreeMap::new();
+    let quest_counter = quest_battle_counter_key(clear_pattern, quest_category, quest_id);
+    let previous = database.mission_counters(account_id)?;
+    let quest_count = previous
+        .get(&quest_counter)
+        .copied()
+        .unwrap_or(0)
+        .checked_add(1)
+        .ok_or_else(|| PersonalServiceError::new("CN quest counter overflow"))?;
+    extra_counters.insert(quest_counter, quest_count);
     if let Some((key, value)) = scoped_counter {
         extra_counters.insert(key, value);
     }
@@ -122,6 +132,19 @@ pub(crate) fn record_battle_action(
             account_id,
             "multi_battle_mvp_count",
             1,
+        )?);
+    }
+
+    // Different statistics share the same mission pattern. Their subtype is
+    // resolved from the master and player totals, never a shared counter.
+    for pattern in [
+        "battle_zone_statistics_count",
+        "total_attained_drop_mana_count",
+        "player_rank_achievement",
+        "target_mission_clear",
+    ] {
+        mission_info.extend(record_pattern_progress(
+            root, database, account_id, pattern, 0,
         )?);
     }
 
@@ -199,28 +222,31 @@ fn battle_progress_for_category(
     let progress = progress
         .as_array()
         .ok_or_else(|| PersonalServiceError::new("stored CN quest progress list is invalid"))?;
-    let count = if pattern == "multi_battle_clear_count" {
-        progress.iter().fold(0_i64, |total, entry| {
-            if entry.get("finished").and_then(Value::as_bool) != Some(true) {
-                return total;
-            }
-            total.saturating_add(
-                entry
-                    .get("multi_clear_count")
-                    .and_then(Value::as_i64)
-                    .unwrap_or(1)
-                    .max(0),
-            )
-        })
-    } else {
-        i64::try_from(
-            progress
-                .iter()
-                .filter(|entry| entry.get("finished").and_then(Value::as_bool) == Some(true))
-                .count(),
-        )
-        .unwrap_or(i64::MAX)
-    };
+    let count = progress.iter().fold(0_i64, |total, entry| {
+        if entry.get("finished").and_then(Value::as_bool) != Some(true) {
+            return total;
+        }
+        let count = if pattern == "multi_battle_clear_count" {
+            entry
+                .get("multi_clear_count")
+                .and_then(Value::as_i64)
+                .unwrap_or(0)
+        } else {
+            entry
+                .get("single_clear_count")
+                .and_then(Value::as_i64)
+                .unwrap_or_else(|| {
+                    i64::from(
+                        entry
+                            .get("multi_clear_count")
+                            .and_then(Value::as_i64)
+                            .unwrap_or(0)
+                            == 0,
+                    )
+                })
+        };
+        total.saturating_add(count.max(0))
+    });
     Ok(count)
 }
 // //// /计算并保存关卡类别内的战斗次数 ////
@@ -504,6 +530,9 @@ fn record_pattern_progress_with_extra_counters(
         .unwrap_or_default();
     let mut mission_updates = BTreeMap::new();
     let mut stage_updates = Vec::new();
+    let now = database.current_server_time_seconds()?;
+    let mut reward_history = Vec::new();
+    let mut reward_receipts = Vec::new();
 
     for key in mission_keys {
         let Some(mission) = catalog
@@ -518,7 +547,7 @@ fn record_pattern_progress_with_extra_counters(
             Some(quest_category) => !scoped || mission.quest_categories.contains(&quest_category),
             None => !scoped,
         };
-        if !include {
+        if !include || !mission_is_enabled(mission, now) {
             continue;
         }
         let database_progress = stored_progress
@@ -534,6 +563,22 @@ fn record_pattern_progress_with_extra_counters(
             catalog,
         );
         mission_updates.insert((key.category, key.mission_id), computed_progress);
+        // Pay in the action that completed the mission. The progress page is
+        // also a repair path for old snapshots, but must not be needed to claim.
+        for stage in mission.stages.iter().filter(|stage| {
+            stage
+                .target
+                .is_some_and(|target| computed_progress >= target)
+        }) {
+            let receipt = super::derived::stage_receipt(key, stage.stage, now);
+            if !super::has_stage_receipt(root, &receipt)? {
+                reward_history.extend(super::apply_rewards(root, &stage.rewards, 0, now)?);
+                super::mark_stage_received(root, receipt.clone())?;
+                reward_receipts.push(receipt);
+            }
+        }
+        let notification_progress =
+            super::derived::previous_notification(root, key, database_progress);
         let completed_stages = if key.category == 1 {
             let current_stage_number = current_stage(mission, computed_progress);
             let previous_stage = cleared_regular_stage(root, key);
@@ -555,7 +600,7 @@ fn record_pattern_progress_with_extra_counters(
                 .iter()
                 .filter(|stage| {
                     stage.target.is_some_and(|target| {
-                        database_progress < target && computed_progress >= target
+                        notification_progress < target && computed_progress >= target
                     })
                 })
                 .map(|stage| (stage.stage, stage.reward_id))
@@ -564,6 +609,7 @@ fn record_pattern_progress_with_extra_counters(
         if !completed_stages.is_empty() {
             stage_updates.push((key, completed_stages));
         }
+        super::derived::record_notification(root, key, computed_progress);
     }
 
     let mut mission_info = Vec::new();
@@ -584,6 +630,16 @@ fn record_pattern_progress_with_extra_counters(
     let mut counter_update = BTreeMap::from([(pattern.to_owned(), progress)]);
     counter_update.extend(extra_counters.clone());
     database.set_mission_progress(account_id, &counter_update, &mission_updates)?;
+    if !reward_receipts.is_empty() {
+        database.save_mission_rewards_with_receive_history(
+            account_id,
+            &super::encode_player_data(&Value::Object(root.clone()))?,
+            &mission_updates,
+            &super::mission_reward_event_key(&reward_receipts),
+            now,
+            &reward_history,
+        )?;
+    }
     Ok(mission_info)
 }
 

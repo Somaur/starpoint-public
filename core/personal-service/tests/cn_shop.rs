@@ -783,7 +783,7 @@ fn rejects_a_purchase_above_the_client_buy_max_count() {
         viewer_id,
         shop_type: 2,
         shop_item_id: 200_001,
-        number: 2,
+        number: 11,
     };
 
     let response = cn_support::send_request(
@@ -799,6 +799,41 @@ fn rejects_a_purchase_above_the_client_buy_max_count() {
     service.stop().expect("service stops cleanly");
 }
 // //// /验证单次购买遵守客户端商品数量上限 ////
+
+#[test]
+fn mana_shop_buys_multiple_copies_and_rejects_stock_or_balance_overflow_atomically() {
+    let root = TempDir::new().unwrap();
+    let service = PersonalService::start(root.path(), 0).unwrap();
+    let viewer_id = signup(&service, 1021);
+    set_virtual_time(&service, "2020-01-01T12:00:00.000Z");
+    update_player_snapshot(root.path(), |data| {
+        data["user_info"]["free_mana"] = json!(5000);
+        data["user_info"]["mana"] = json!(0);
+        data["item_list"]["1"] = json!(0);
+    });
+    let buy = |number| cn_support::send_request(
+        service.port(), "/api/index.php/shop/buy",
+        &encode_request(&BuyRequest { viewer_id, shop_type: 2, shop_item_id: 200_001, number }),
+    );
+    let response = decode_response::<Value>(&buy(5));
+    assert_eq!(response.data["item_list"]["1"], 5);
+    let after = read_player_snapshot(root.path());
+    assert_eq!(after["user_info"]["free_mana"], 3500);
+    assert_eq!(after["shop_purchase_counts"]["2:200001"], 5);
+    assert!(buy(6).ends_with("{\"error\":\"shop_stock_exceeded\"}"));
+    assert_eq!(read_player_snapshot(root.path()), after);
+    update_player_snapshot(root.path(), |data| data["user_info"]["free_mana"] = json!(299));
+    let before_rejection = read_player_snapshot(root.path());
+    assert!(!buy(2).starts_with("HTTP/1.1 200 OK"));
+    assert_eq!(read_player_snapshot(root.path()), before_rejection);
+    update_player_snapshot(root.path(), |data| data["user_info"]["free_mana"] = json!(1500));
+    decode_response::<Value>(&buy(5));
+    let loaded = load(service.port(), viewer_id);
+    assert_eq!(loaded.data["item_list"]["1"], 10);
+    assert_eq!(loaded.data["user_info"]["free_mana"], 0);
+    assert!(buy(1).ends_with("{\"error\":\"shop_stock_exceeded\"}"));
+    service.stop().unwrap();
+}
 
 // //// 验证每日库存按客户端刷新时刻重置并保留累计购买数 ////
 #[test]

@@ -47,6 +47,22 @@ pub(super) fn draw_movie_id(
 
 // //// 按动画和稀有度选择可播放 seed [@x380kkm 2026-08-24] ////
 pub(super) fn movie_seed(character_id: i64, movie_id: &str) -> Result<i64, PersonalServiceError> {
+    movie_seed_with_index(character_id, movie_id, None)
+}
+
+// Tutorials can resume an already awarded character. Keep their animation stable
+// across retries/restarts, and support legacy three-star tutorial draws as well.
+pub(crate) fn tutorial_movie(character_id: i64) -> Result<(&'static str, i64), PersonalServiceError> {
+    let rarity = character_asset_data(character_id)?.rarity;
+    let movie_id = if rarity >= 4 { "normal_guarantee" } else { "normal" };
+    Ok((movie_id, movie_seed_with_index(character_id, movie_id, Some(0))?))
+}
+
+fn movie_seed_with_index(
+    character_id: i64,
+    movie_id: &str,
+    fixed_index: Option<usize>,
+) -> Result<i64, PersonalServiceError> {
     let rarity = character_asset_data(character_id)?.rarity;
     if movie_id == "rarity_5_guarantee" {
         return Ok(character_id * 1_000);
@@ -73,11 +89,16 @@ pub(super) fn movie_seed(character_id: i64, movie_id: &str) -> Result<i64, Perso
     let Some(seeds) = seeds.filter(|seeds| !seeds.is_empty()) else {
         return Ok(character_id * 1_000);
     };
-    let mut bytes = [0_u8; 8];
-    getrandom(&mut bytes).map_err(|error| {
-        PersonalServiceError::new(format!("failed to select CN gacha movie seed: {error}"))
-    })?;
-    let index = (u64::from_le_bytes(bytes) % seeds.len() as u64) as usize;
+    let index = match fixed_index {
+        Some(index) => index % seeds.len(),
+        None => {
+            let mut bytes = [0_u8; 8];
+            getrandom(&mut bytes).map_err(|error| {
+                PersonalServiceError::new(format!("failed to select CN gacha movie seed: {error}"))
+            })?;
+            (u64::from_le_bytes(bytes) % seeds.len() as u64) as usize
+        }
+    };
     seeds[index]
         .as_i64()
         .ok_or_else(|| PersonalServiceError::new("CN gacha movie seed is invalid"))

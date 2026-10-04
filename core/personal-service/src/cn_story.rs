@@ -104,7 +104,7 @@ fn finish(
     } else {
         (Vec::new(), Vec::new())
     };
-    let response = if was_finished {
+    let mut response = if was_finished {
         json!([])
     } else {
         let user_info = require_object(root, "user_info")?;
@@ -127,6 +127,7 @@ fn finish(
     if !was_finished {
         database.save_player_snapshot(snapshot.account_id, &encode_player_data(&player_data)?)?;
     }
+    crate::cn_mission::sync_reward_response(&mut response, &player_data, response_time);
     msgpack_response_at(body.viewer_id, false, response_time, response)
 }
 

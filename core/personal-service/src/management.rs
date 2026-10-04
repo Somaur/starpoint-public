@@ -22,7 +22,7 @@ pub(crate) fn route(
     database: &mut ServiceDatabase,
 ) -> Option<Result<HttpResponse, crate::PersonalServiceError>> {
     let path = request.path();
-    if path == HTTP_OBSERVATIONS_PATH {
+    if path == HTTP_OBSERVATIONS_PATH || path == "/v1/client-crashes" {
         if !is_authorized(request, database) {
             return Some(Ok(unauthorized_response()));
         }
@@ -30,6 +30,12 @@ pub(crate) fn route(
             return Some(Ok(HttpResponse::json(
                 "405 Method Not Allowed",
                 "{\"error\":\"method_not_allowed\"}".to_owned(),
+            )));
+        }
+        if path == "/v1/client-crashes" {
+            return Some(Ok(HttpResponse::json(
+                "200 OK",
+                serde_json::json!({"crashes":database.client_crashes}).to_string(),
             )));
         }
         return Some(http_observations_response(database));

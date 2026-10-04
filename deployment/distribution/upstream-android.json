@@ -1,0 +1,84 @@
+{
+  "name": "android",
+  "platform": "Android",
+  "file": "StarpointCN-Android-v-beta-0.0.16.apk",
+  "bytes": 11433649996,
+  "sha256": "a66543ab4901c4cc1ae488b9cbc469f09f8e48ceada9870924cbfd27d6102612",
+  "source_commit": "72343ada953fb65e19094cf90821a41f55f1744e",
+  "source_tag": "android-v-beta-0.0.16",
+  "signing": "signed distribution APK",
+  "part_size": 1073741824,
+  "volumes": [
+    {
+      "file": "StarpointCN-Android-v-beta-0.0.16.apk.part001",
+      "index": 1,
+      "bytes": 1073741824,
+      "sha256": "216bee8bf73aab3db3ba3a8f2b6d9a4465cf48411db572c5a2d0eff0a309eb73"
+    },
+    {
+      "file": "StarpointCN-Android-v-beta-0.0.16.apk.part002",
+      "index": 2,
+      "bytes": 1073741824,
+      "sha256": "8797d7f48cc5a0dd644bbde2bd03010068c96086a7e3f766dfb23065716b2295"
+    },
+    {
+      "file": "StarpointCN-Android-v-beta-0.0.16.apk.part003",
+      "index": 3,
+      "bytes": 1073741824,
+      "sha256": "6621dabe078574bed99c890c735c1acbba6a03b91b764df2988019eb63ae30e3"
+    },
+    {
+      "file": "StarpointCN-Android-v-beta-0.0.16.apk.part004",
+      "index": 4,
+      "bytes": 1073741824,
+      "sha256": "90b624f8cd7c01d2e2d87533fb12ad5c6d3a6fdecc9018d661a17d09efa6023e"
+    },
+    {
+      "file": "StarpointCN-Android-v-beta-0.0.16.apk.part005",
+      "index": 5,
+      "bytes": 1073741824,
+      "sha256": "2bdeaaf4944a363a0534031b6406ee3cea072cd640b98ba0722cefdb562ab55f"
+    },
+    {
+      "file": "StarpointCN-Android-v-beta-0.0.16.apk.part006",
+      "index": 6,
+      "bytes": 1073741824,
+      "sha256": "80ffe54e154850a3352318bc7c92008a6199fb8cecd70407a43c9a39398ae2a0"
+    },
+    {
+      "file": "StarpointCN-Android-v-beta-0.0.16.apk.part007",
+      "index": 7,
+      "bytes": 1073741824,
+      "sha256": "051580f18f25cbb4d92be60fd77870cf242db3d30d745206bec2e101c86c119d"
+    },
+    {
+      "file": "StarpointCN-Android-v-beta-0.0.16.apk.part008",
+      "index": 8,
+      "bytes": 1073741824,
+      "sha256": "57aab91b8ba93323156466148a8736f3fca327cb4302cee5bf36ea4598b88669"
+    },
+    {
+      "file": "StarpointCN-Android-v-beta-0.0.16.apk.part009",
+      "index": 9,
+      "bytes": 1073741824,
+      "sha256": "6d5091d2c5af675268e43a05ff7d4be08223efd5f470178b62d68ec7444d8759"
+    },
+    {
+      "file": "StarpointCN-Android-v-beta-0.0.16.apk.part010",
+      "index": 10,
+      "bytes": 1073741824,
+      "sha256": "283e770baf7bb84246f90002d29515d883b6fa19a318ac5031b6eb9204b073ac"
+    },
+    {
+      "file": "StarpointCN-Android-v-beta-0.0.16.apk.part011",
+      "index": 11,
+      "bytes": 696231756,
+      "sha256": "ac1915b5cd41f7f7a861d2e20c2f81e42881af9c3bd70c729a4b5e3a11e0fb3a"
+    }
+  ],
+  "url": "https://github.com/x380kkm/starpoint-public/releases/download/mobile-v-beta-0.0.16/",
+  "base_bytes": 150810879,
+  "base_sha256": "6e15dca8f2569cdb5d38f8fc24a7e847c6596a0ef6040e7670e138fb92ed911c",
+  "swf_sha256": "9fe0cd14d4d644a31057ceb8116502a5701e858a957c29fba046ebd2717e9392",
+  "patched_swf_sha256": "eca81bbe45657d57e14ffa9dc9688928df42a8d5c04b21cc6f5b379e791cfb6f"
+}

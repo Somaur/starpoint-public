@@ -5,7 +5,6 @@
 
 mod active_mission;
 mod common;
-mod image;
 mod item;
 mod quest;
 
@@ -20,9 +19,6 @@ pub(crate) fn route(
     request: &HttpRequest,
     database: &mut ServiceDatabase,
 ) -> Option<Result<HttpResponse, PersonalServiceError>> {
-    if request.method() == "GET" && request.path() == "/api/index.php/comic/image" {
-        return Some(Ok(image::response(request)));
-    }
     if request.method() != "POST" {
         return None;
     }

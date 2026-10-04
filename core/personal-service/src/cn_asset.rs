@@ -13,7 +13,7 @@ use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs::{self, File};
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -83,6 +83,16 @@ struct AssetPathData {
     info: AssetPathInfo,
     full: AssetArchiveGroup,
     diff: Vec<AssetDiffGroup>,
+    asset_version_hash: String,
+}
+
+// A missing group is significant to the CN client: full=null avoids reimporting
+// the base archives, and full=null/diff=null means no download is needed.
+#[derive(Serialize)]
+struct AssetPathResponse {
+    info: AssetPathInfo,
+    full: Option<AssetArchiveGroup>,
+    diff: Option<Vec<AssetDiffGroup>>,
     asset_version_hash: String,
 }
 
@@ -322,7 +332,14 @@ fn get_path(
         platform,
         digest_cache,
     )?;
-    msgpack_response(database, request_data.viewer_id.unwrap_or(0), true, data)
+    let response = select_download_path(data);
+    let asset_update = response.full.is_some() || response.diff.is_some();
+    msgpack_response(
+        database,
+        request_data.viewer_id.unwrap_or(0),
+        asset_update,
+        response,
+    )
 }
 // //// /返回 CN 资产下载路径 ////
 
@@ -364,8 +381,72 @@ fn localized_path_data(
     let override_archives =
         list_override_diff_archives(override_root, base_url, platform, digest_cache);
     merge_override_diff_archives(&mut data, override_archives);
-    data.diff.retain(|diff| !diff.archive.is_empty());
+    // Keep version transitions even when platform filtering removes all their
+    // archives. Android must traverse an iOS-only version to reach a later
+    // common activity overlay (e.g. 1.4.54 -> 1.4.55 -> 1.4.56).
+    let mut origins = BTreeSet::new();
+    for group in &data.diff {
+        if !origins.insert(&group.original_version)
+            || !matches!((parse_version(&group.original_version), parse_version(&group.version)),
+                (Some(from), Some(to)) if to > from)
+        {
+            return Err(PersonalServiceError::new(
+                "CN asset path has an invalid version transition",
+            ));
+        }
+    }
     Ok(data)
+}
+
+fn select_download_path(mut data: AssetPathData) -> AssetPathResponse {
+    let mut current = data.info.client_asset_version.clone();
+    let target = &data.info.target_asset_version;
+    let mut selected = Vec::new();
+    let mut incremental = parse_version(&current).is_some();
+    while incremental && current != *target {
+        let candidates = data
+            .diff
+            .iter()
+            .enumerate()
+            .filter(|(_, group)| group.original_version == current)
+            .collect::<Vec<_>>();
+        if candidates.len() != 1 {
+            incremental = false;
+            break;
+        }
+        let (index, group) = candidates[0];
+        // Reject malformed, backwards or cyclic transitions before the client
+        // can enter its unbounded original_version -> version traversal.
+        match (parse_version(&current), parse_version(&group.version)) {
+            (Some(from), Some(to)) if to > from => {}
+            _ => {
+                incremental = false;
+                break;
+            }
+        }
+        selected.push(index);
+        current = group.version.clone();
+    }
+    data.info.is_initial = !incremental;
+    let (full, diff) = if incremental {
+        let mut groups = data.diff.into_iter().map(Some).collect::<Vec<_>>();
+        let groups = selected
+            .into_iter()
+            .map(|index| groups[index].take().unwrap())
+            .collect::<Vec<_>>();
+        (None, (!groups.is_empty()).then_some(groups))
+    } else {
+        (
+            Some(data.full),
+            (!data.diff.is_empty()).then_some(data.diff),
+        )
+    };
+    AssetPathResponse {
+        info: data.info,
+        full,
+        diff,
+        asset_version_hash: data.asset_version_hash,
+    }
 }
 
 // //// 解析当前平台可用的 CN 资源版本 [@x380kkm 2026-08-29] ////

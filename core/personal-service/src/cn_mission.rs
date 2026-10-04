@@ -4,11 +4,14 @@
 // 该模块按 CN mission master 计算任务进度和阶段. 阶段奖励与领取记录使用同一事务提交.
 
 mod action;
+mod derived;
+mod response;
+pub(crate) use response::sync_reward_response;
+
+pub(crate) use derived::{prepare_periods, prepare_snapshot_periods};
 
 use crate::cn::{decode_request, msgpack_response_at, server_time};
-use crate::cn_tutorial::{
-    create_stored_character, decode_player_data, encode_player_data, player_snapshot,
-};
+use crate::cn_tutorial::{decode_player_data, encode_player_data, player_snapshot};
 use crate::database::{ReceiveHistoryEntry, ServiceDatabase};
 use crate::http::{HttpRequest, HttpResponse};
 use crate::PersonalServiceError;
@@ -37,6 +40,8 @@ struct MissionKey {
 }
 
 struct MissionCatalog {
+    chapter_final_quests: BTreeMap<(i64, i64), i64>,
+    quest_ranks: BTreeMap<String, i64>,
     categories: BTreeMap<i64, Vec<MissionDefinition>>,
     pattern_index: BTreeMap<String, Vec<MissionKey>>,
     character_stories: BTreeMap<String, Vec<i64>>,
@@ -48,8 +53,13 @@ struct MissionDefinition {
     pattern: Option<String>,
     degree_target: Option<i64>,
     quest_categories: Vec<i64>,
+    quest_scope: Vec<Option<Vec<i64>>>,
+    quest_rank_id: Option<i64>,
+    enable_start_time: Option<i64>,
+    enable_end_time: Option<i64>,
     battle_kind: Option<i64>,
     statistics_kind: Option<i64>,
+    target_mission_ids: Vec<i64>,
     leader_character_id: Option<i64>,
     required_character_ids: Vec<i64>,
     required_races: Vec<String>,
@@ -71,9 +81,19 @@ struct MissionDocument {
     #[serde(default)]
     quest_categories: Vec<i64>,
     #[serde(default)]
+    quest_scope: Vec<Option<Vec<i64>>>,
+    #[serde(default)]
+    quest_rank_id: Option<i64>,
+    #[serde(default)]
+    enable_start_time: Option<i64>,
+    #[serde(default)]
+    enable_end_time: Option<i64>,
+    #[serde(default)]
     battle_kind: Option<i64>,
     #[serde(default)]
     statistics_kind: Option<i64>,
+    #[serde(default)]
+    target_mission_ids: Vec<i64>,
     #[serde(default)]
     leader_character_id: Option<i64>,
     #[serde(default)]
@@ -99,6 +119,8 @@ pub(crate) struct MissionReward {
     pub(crate) item_id: Option<i64>,
     pub(crate) character_id: Option<i64>,
     pub(crate) equipment_id: Option<i64>,
+    #[serde(default)]
+    pub(crate) degree_id: Option<i64>,
 }
 
 #[derive(Deserialize)]
@@ -119,16 +141,21 @@ struct ComputeContext {
     rank_counts: BTreeMap<&'static str, i64>,
     rank_degree: i64,
     total_powerflips: i64,
-    total_quest_clears: i64,
     total_stamina_used: i64,
     total_stories: i64,
+    statistics: BTreeMap<i64, i64>,
+    mode_statistics: BTreeMap<(i64, i64), i64>,
+    drop_mana: i64,
+    period_baselines: BTreeMap<String, i64>,
 }
 
 struct QuestProgressEntry {
+    ss_clear_count: i64,
     quest_id: i64,
     best_elapsed_time_ms: Option<i64>,
     leader_character_id: Option<i64>,
     multi_clear_count: Option<i64>,
+    single_clear_count: Option<i64>,
 }
 
 #[derive(Deserialize)]
@@ -301,13 +328,14 @@ fn get_progress(
     let root = player_data
         .as_object_mut()
         .ok_or_else(|| PersonalServiceError::new("stored CN player data is not an object"))?;
+    let period_changed = prepare_periods(root, database, snapshot.account_id, response_time)?;
     let context = build_context(root, catalog, &counters)?;
     let character_filters = category_character_filters(&categories);
     let mut mission_progress_list = Vec::new();
     let mut rewarded_progress = BTreeMap::new();
     let mut rewarded_receipts = Vec::new();
     let mut history_entries = Vec::new();
-    let mut snapshot_changed = false;
+    let mut snapshot_changed = period_changed;
 
     for requested in &categories {
         let Some(missions) = catalog.categories.get(&requested.category) else {
@@ -344,16 +372,20 @@ fn get_progress(
                 "stage": current_stage(mission, progress),
             }));
 
-            for stage in mission
-                .stages
-                .iter()
-                .filter(|stage| stage.target.is_some_and(|target| progress >= target))
-            {
-                let receipt = format!("{}:{}:{}", key.category, key.mission_id, stage.stage);
+            for stage in mission.stages.iter().filter(|stage| {
+                mission_is_enabled(mission, response_time)
+                    && stage.target.is_some_and(|target| progress >= target)
+            }) {
+                let receipt = derived::stage_receipt(key, stage.stage, response_time);
                 if has_stage_receipt(root, &receipt)? {
                     continue;
                 }
-                history_entries.extend(apply_rewards(root, &stage.rewards, response_time)?);
+                history_entries.extend(apply_rewards(
+                    root,
+                    &stage.rewards,
+                    body.viewer_id,
+                    response_time,
+                )?);
                 mark_stage_received(root, receipt.clone())?;
                 rewarded_receipts.push(receipt);
                 rewarded_progress.insert((key.category, key.mission_id), progress);
@@ -373,14 +405,16 @@ fn get_progress(
         )?;
     }
     let mail_arrived = database.has_unreceived_mail(snapshot.account_id, response_time)?;
+    let mut response = json!({
+        "mission_progress_list": mission_progress_list,
+        "mail_arrived": mail_arrived,
+    });
+    sync_reward_response(&mut response, &player_data, response_time);
     msgpack_response_at(
         body.viewer_id,
         false,
         response_time,
-        json!({
-            "mission_progress_list": mission_progress_list,
-            "mail_arrived": mail_arrived,
-        }),
+        response,
     )
 }
 // //// /计算任务进度并结算新完成阶段 ////
@@ -517,8 +551,13 @@ fn build_mission_catalog() -> Result<MissionCatalog, String> {
                 pattern: mission.pattern,
                 degree_target: mission.degree_target,
                 quest_categories: mission.quest_categories,
+                quest_scope: mission.quest_scope,
+                quest_rank_id: mission.quest_rank_id,
+                enable_start_time: mission.enable_start_time,
+                enable_end_time: mission.enable_end_time,
                 battle_kind: mission.battle_kind,
                 statistics_kind: mission.statistics_kind,
+                target_mission_ids: mission.target_mission_ids,
                 leader_character_id: mission.leader_character_id,
                 required_character_ids: mission.required_character_ids,
                 required_races: mission.required_races,
@@ -528,6 +567,9 @@ fn build_mission_catalog() -> Result<MissionCatalog, String> {
         categories.insert(category, definitions);
     }
     Ok(MissionCatalog {
+        chapter_final_quests: derived::chapter_final_quests()?,
+        quest_ranks: serde_json::from_str(include_str!("../assets/cn-boss-quest-ranks.json"))
+            .map_err(|error| format!("failed to decode CN quest ranks: {error}"))?,
         categories,
         pattern_index,
         character_stories: document.character_stories,
@@ -564,7 +606,6 @@ fn build_context(
 ) -> Result<ComputeContext, PersonalServiceError> {
     let mut finished_quests = BTreeSet::new();
     let mut quest_progress = BTreeMap::<i64, Vec<QuestProgressEntry>>::new();
-    let mut total_quest_clears = 0;
     let mut total_stories = 0;
     let mut rank_ss = 0;
     if let Some(categories) = root.get("quest_progress").and_then(Value::as_object) {
@@ -577,7 +618,6 @@ fn build_context(
                 if entry.get("finished").and_then(Value::as_bool) != Some(true) {
                     continue;
                 }
-                total_quest_clears += 1;
                 if category == "3" {
                     total_stories += 1;
                 }
@@ -588,6 +628,16 @@ fn build_context(
                             .entry(category_id)
                             .or_default()
                             .push(QuestProgressEntry {
+                                ss_clear_count: entry
+                                    .get("ss_clear_count")
+                                    .and_then(Value::as_i64)
+                                    .unwrap_or_else(|| {
+                                        i64::from(
+                                            entry.get("clear_rank").and_then(Value::as_i64)
+                                                == Some(5),
+                                        )
+                                    })
+                                    .max(0),
                                 quest_id,
                                 best_elapsed_time_ms: entry
                                     .get("best_elapsed_time_ms")
@@ -598,11 +648,20 @@ fn build_context(
                                 multi_clear_count: entry
                                     .get("multi_clear_count")
                                     .and_then(Value::as_i64),
+                                single_clear_count: entry
+                                    .get("single_clear_count")
+                                    .and_then(Value::as_i64),
                             });
                     }
                 }
                 match entry.get("clear_rank").and_then(Value::as_i64) {
-                    Some(6) => rank_ss += 1,
+                    Some(5) => {
+                        rank_ss += entry
+                            .get("ss_clear_count")
+                            .and_then(Value::as_i64)
+                            .unwrap_or(1)
+                            .max(0)
+                    }
                     _ => {}
                 }
             }
@@ -645,9 +704,15 @@ fn build_context(
         rank_counts: BTreeMap::from([("ss_rank_count", rank_ss)]),
         rank_degree: rank_degree(rank_point, &catalog.rank_thresholds),
         total_powerflips,
-        total_quest_clears,
         total_stamina_used,
         total_stories,
+        statistics: derived::statistics(root),
+        mode_statistics: derived::mode_statistics(root),
+        drop_mana: user_info
+            .get("total_drop_mana")
+            .and_then(Value::as_i64)
+            .unwrap_or(0),
+        period_baselines: derived::period_baselines(root),
     })
 }
 
@@ -706,19 +771,76 @@ fn compute_progress(
     database_progress: i64,
     catalog: &MissionCatalog,
 ) -> i64 {
-    if category == 5 && mission.degree_target.is_some() {
+    derived::compute_progress(
+        category,
+        mission,
+        context,
+        counters,
+        database_progress,
+        catalog,
+        0,
+    )
+}
+
+fn compute_lifetime_progress(
+    category: i64,
+    mission: &MissionDefinition,
+    context: &ComputeContext,
+    counters: &BTreeMap<String, i64>,
+    database_progress: i64,
+    catalog: &MissionCatalog,
+) -> i64 {
+    if mission.pattern.as_deref() == Some("player_rank_achievement") {
         return context.rank_degree;
     }
     if category == 9 {
         return awake_progress(mission.id, context, catalog);
     }
+    if mission.pattern.as_deref() == Some("chapter_clear") {
+        return derived::chapter_progress(mission, context, catalog);
+    }
+    if mission.pattern.as_deref() == Some("ss_rank_count") {
+        return context
+            .quest_progress
+            .iter()
+            .filter(|(category, _)| {
+                mission.quest_categories.is_empty() || mission.quest_categories.contains(category)
+            })
+            .flat_map(|(_, entries)| entries)
+            .filter(|entry| quest_matches_scope(mission, entry.quest_id))
+            .map(|entry| entry.ss_clear_count)
+            .fold(0, i64::saturating_add);
+    }
     if is_scoped_battle_mission(mission) {
-        return scoped_battle_progress(mission, context, counters);
+        return scoped_battle_progress(mission, context, counters, catalog);
+    }
+    if mission.pattern.as_deref() == Some("battle_zone_statistics_count") {
+        return if mission.quest_categories.is_empty() {
+            mission
+                .statistics_kind
+                .and_then(|kind| match mission.battle_kind {
+                    Some(mode @ (1 | 2)) => context.mode_statistics.get(&(mode, kind)),
+                    _ => context.statistics.get(&kind),
+                })
+                .copied()
+                .unwrap_or(0)
+        } else {
+            database_progress
+        };
+    }
+    if mission.pattern.as_deref() == Some("total_attained_drop_mana_count") {
+        return context.drop_mana;
     }
     if category == 1 || category == 2 {
         if let Some(pattern) = mission.pattern.as_deref() {
             if pattern == "single_battle_clear_count" {
-                return context.total_quest_clears;
+                return context
+                    .quest_progress
+                    .iter()
+                    .filter(|(category, _)| **category != 3)
+                    .map(|(category, _)| battle_progress_for_category(context, pattern, *category))
+                    .fold(0, i64::saturating_add)
+                    .max(counters.get(pattern).copied().unwrap_or(0));
             }
             if pattern == "used_stamina_count" {
                 return context.total_stamina_used;
@@ -750,8 +872,53 @@ fn scoped_battle_progress(
     mission: &MissionDefinition,
     context: &ComputeContext,
     counters: &BTreeMap<String, i64>,
+    catalog: &MissionCatalog,
 ) -> i64 {
     let pattern = mission.pattern.as_deref().unwrap_or_default();
+    if mission.quest_scope.iter().any(Option::is_some) || mission.quest_rank_id.is_some() {
+        return mission
+            .quest_categories
+            .iter()
+            .flat_map(|category| {
+                context
+                    .quest_progress
+                    .get(category)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(move |entry| {
+                        (quest_matches_scope(mission, entry.quest_id)
+                            && mission.quest_rank_id.map_or(true, |rank| {
+                                catalog
+                                    .quest_ranks
+                                    .get(&format!("{category}:{}", entry.quest_id))
+                                    == Some(&rank)
+                            }))
+                        .then(|| {
+                            counters
+                                .get(&quest_battle_counter_key(
+                                    pattern,
+                                    *category,
+                                    entry.quest_id,
+                                ))
+                                .copied()
+                                .unwrap_or(0)
+                                .max(quest_clear_count(
+                                    entry,
+                                    pattern,
+                                    counters
+                                        .get(&quest_battle_counter_key(
+                                            "multi_battle_clear_count",
+                                            *category,
+                                            entry.quest_id,
+                                        ))
+                                        .copied()
+                                        .unwrap_or(0),
+                                ))
+                        })
+                    })
+            })
+            .fold(0, i64::saturating_add);
+    }
     mission
         .quest_categories
         .iter()
@@ -759,13 +926,43 @@ fn scoped_battle_progress(
             counters
                 .get(&scoped_battle_counter_key(pattern, *quest_category))
                 .copied()
-                .unwrap_or_else(|| battle_progress_for_category(context, pattern, *quest_category))
+                .unwrap_or(0)
+                .max(battle_progress_for_category(
+                    context,
+                    pattern,
+                    *quest_category,
+                ))
         })
         .fold(0, i64::saturating_add)
 }
 
 pub(super) fn scoped_battle_counter_key(pattern: &str, quest_category: i64) -> String {
     format!("{pattern}:quest_category:{quest_category}")
+}
+
+// Match the client's QuestRangeReferenceIdKindTools key decomposition. None is
+// a wildcard; an explicitly empty master list matches no quest.
+fn quest_matches_scope(mission: &MissionDefinition, quest_id: i64) -> bool {
+    let mut rest = quest_id;
+    let mut keys = vec![0; mission.quest_scope.len()];
+    for index in (0..keys.len()).rev() {
+        keys[index] = if index == 0 { rest } else { rest % 1000 };
+        rest /= 1000;
+    }
+    mission.quest_scope.iter().zip(keys).all(|(scope, key)| {
+        scope
+            .as_ref()
+            .map_or(true, |allowed| allowed.contains(&key))
+    })
+}
+
+pub(super) fn quest_battle_counter_key(pattern: &str, category: i64, quest_id: i64) -> String {
+    format!("{pattern}:quest:{category}:{quest_id}")
+}
+
+fn mission_is_enabled(mission: &MissionDefinition, now: i64) -> bool {
+    mission.enable_start_time.map_or(true, |start| now >= start)
+        && mission.enable_end_time.map_or(true, |end| now <= end)
 }
 
 fn battle_progress_for_category(
@@ -777,14 +974,21 @@ fn battle_progress_for_category(
         .quest_progress
         .get(&quest_category)
         .map_or(0, |entries| {
-            if pattern == "multi_battle_clear_count" {
-                entries.iter().fold(0, |total, entry| {
-                    total.saturating_add(entry.multi_clear_count.unwrap_or(1).max(0))
-                })
-            } else {
-                i64::try_from(entries.len()).unwrap_or(i64::MAX)
-            }
+            entries.iter().fold(0, |total, entry| {
+                total.saturating_add(quest_clear_count(entry, pattern, 0))
+            })
         })
+}
+
+fn quest_clear_count(entry: &QuestProgressEntry, pattern: &str, known_multi: i64) -> i64 {
+    if pattern == "multi_battle_clear_count" {
+        entry.multi_clear_count.unwrap_or(0).max(0)
+    } else {
+        entry
+            .single_clear_count
+            .unwrap_or_else(|| i64::from(entry.multi_clear_count.unwrap_or(known_multi) == 0))
+            .max(0)
+    }
 }
 // //// /计算任务关卡范围内的战斗次数 ////
 
@@ -1015,12 +1219,17 @@ fn mission_reward_event_key(receipts: &[String]) -> String {
 fn apply_rewards(
     root: &mut Map<String, Value>,
     rewards: &[MissionReward],
+    viewer_id: i64,
     response_time: i64,
 ) -> Result<Vec<ReceiveHistoryEntry>, PersonalServiceError> {
     let mut history_entries = Vec::new();
     for reward in rewards {
         match reward.kind {
-            1 | 2 => {
+            0 => {
+                add_object_amount(root, "user_info", "free_vmoney", reward.amount)?;
+                history_entries.push(ReceiveHistoryEntry::reward(4, None, reward.amount));
+            }
+            1 => {
                 if let Some(item_id) = reward.item_id.or(reward.equipment_id) {
                     add_object_amount(root, "item_list", &item_id.to_string(), reward.amount)?;
                     let kind = if reward.equipment_id.is_some() { 6 } else { 1 };
@@ -1031,18 +1240,38 @@ fn apply_rewards(
                     ));
                 }
             }
+            2 => {
+                if let Some(id) = reward.equipment_id {
+                    let equipment = required_object(root, "user_equipment_list")?;
+                    let owned = equipment.contains_key(&id.to_string());
+                    let entry = equipment.entry(id.to_string()).or_insert_with(
+                        || json!({"enhancement_level":0,"level":1,"protection":false,"stack":0}),
+                    );
+                    let count = entry
+                        .get("stack")
+                        .and_then(Value::as_i64)
+                        .unwrap_or(0)
+                        .checked_add(reward.amount - i64::from(!owned))
+                        .ok_or_else(|| {
+                            PersonalServiceError::new("CN mission equipment stack exceeds range")
+                        })?;
+                    entry["stack"] = Value::from(count.max(0));
+                    history_entries.push(ReceiveHistoryEntry::reward(6, Some(id), reward.amount));
+                }
+            }
             3 => {
                 add_object_amount(root, "user_info", "free_mana", reward.amount)?;
                 history_entries.push(ReceiveHistoryEntry::reward(8, None, reward.amount));
             }
             4 => {
                 if let Some(character_id) = reward.character_id {
-                    let characters = required_object(root, "user_character_list")?;
-                    if !characters.contains_key(&character_id.to_string()) {
-                        characters.insert(
-                            character_id.to_string(),
-                            create_stored_character(character_id, response_time)?,
-                        );
+                    for _ in 0..reward.amount {
+                        crate::cn_character_reward::grant_character(
+                            root,
+                            viewer_id,
+                            character_id,
+                            response_time,
+                        )?;
                     }
                     history_entries.push(ReceiveHistoryEntry::reward(
                         5,
@@ -1054,6 +1283,20 @@ fn apply_rewards(
             5 => {
                 add_object_amount(root, "user_info", "exp_pool", reward.amount)?;
                 history_entries.push(ReceiveHistoryEntry::reward(9, None, reward.amount));
+            }
+            6 => {
+                if let Some(id) = reward.degree_id {
+                    let degrees = root
+                        .entry("earned_degree_ids".to_owned())
+                        .or_insert_with(|| json!([]))
+                        .as_array_mut()
+                        .ok_or_else(|| {
+                            PersonalServiceError::new("stored CN degree list is invalid")
+                        })?;
+                    if !degrees.contains(&Value::from(id)) {
+                        degrees.push(Value::from(id));
+                    }
+                }
             }
             _ => {}
         }
@@ -1098,6 +1341,175 @@ fn error_response(status: &'static str, code: &str) -> HttpResponse {
 mod tests {
     use super::*;
 
+    #[test]
+    fn regular_rank_mission_uses_persisted_rank_without_client_counter() {
+        let catalog = mission_catalog().unwrap();
+        let root = Map::from_iter([("user_info".to_owned(), json!({"rank_point": 2_000_044}))]);
+        let counters = BTreeMap::new();
+        let context = build_context(&root, catalog, &counters).unwrap();
+        let mission = catalog.categories[&1].iter().find(|m| m.id == 22).unwrap();
+        assert_eq!(compute_progress(1, mission, &context, &counters, 0, catalog), 122);
+        assert_eq!(current_stage(mission, 122), 13);
+    }
+
+    #[test]
+    fn boss_missions_require_the_actual_difficulty() {
+        let catalog = mission_catalog().unwrap();
+        let mission = catalog.categories[&5]
+            .iter()
+            .find(|m| m.id == 11050)
+            .unwrap();
+        assert_eq!(mission.quest_rank_id, Some(4));
+        let mut root = Map::from_iter([
+            ("user_info".to_owned(), json!({"rank_point": 0})),
+            (
+                "quest_progress".to_owned(),
+                json!({"2": [
+                    {"quest_id": 1014001, "finished": true},
+                    {"quest_id": 1014003, "finished": true}
+                ]}),
+            ),
+        ]);
+        let counters = BTreeMap::new();
+        let context = build_context(&root, catalog, &counters).unwrap();
+        assert_eq!(
+            compute_progress(5, mission, &context, &counters, 99, catalog),
+            0
+        );
+        root["quest_progress"]["2"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({"quest_id": 1014004, "finished": true}));
+        let context = build_context(&root, catalog, &counters).unwrap();
+        assert_eq!(
+            compute_progress(5, mission, &context, &counters, 99, catalog),
+            1
+        );
+    }
+
+    #[test]
+    fn mission_windows_follow_cn_android_utc_plus_eight_boundaries() {
+        let catalog = mission_catalog().unwrap();
+        let mission = catalog.categories[&2].iter().find(|m| m.id == 1).unwrap();
+        // CN boot uses 28800000 ms despite the legacy "JAPAN_STANDARD" name.
+        assert_eq!(mission.enable_start_time, Some(1574913600));
+        assert_eq!(mission.enable_end_time, Some(1582318799));
+        assert!(!mission_is_enabled(mission, 1574913600 - 1));
+        assert!(mission_is_enabled(mission, 1574913600));
+        assert!(mission_is_enabled(mission, 1582318799));
+        assert!(!mission_is_enabled(mission, 1582318799 + 1));
+    }
+
+    #[test]
+    fn specific_quest_missions_do_not_inherit_global_or_other_quest_progress() {
+        let catalog = mission_catalog().unwrap();
+        let mission = catalog.categories[&1].iter().find(|m| m.id == 42).unwrap();
+        assert!(!quest_matches_scope(mission, 1_002_002));
+        assert!(!quest_matches_scope(mission, 2_004_002));
+        assert!(quest_matches_scope(mission, 1_004_002));
+        let mut root = Map::from_iter([
+            ("user_info".to_owned(), json!({"rank_point": 0})),
+            (
+                "quest_progress".to_owned(),
+                json!({"1": [{"quest_id": 1_002_002, "finished": true}]}),
+            ),
+        ]);
+        let mut counters = BTreeMap::from([
+            ("single_battle_clear_count".to_owned(), 99),
+            (
+                scoped_battle_counter_key("single_battle_clear_count", 1),
+                99,
+            ),
+        ]);
+        let context = build_context(&root, catalog, &counters).unwrap();
+        assert_eq!(
+            compute_progress(1, mission, &context, &counters, 99, catalog),
+            0
+        );
+        root["quest_progress"]["1"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({"quest_id": 1_004_002, "finished": true}));
+        let context = build_context(&root, catalog, &counters).unwrap();
+        assert_eq!(
+            compute_progress(1, mission, &context, &counters, 99, catalog),
+            1
+        );
+        counters.insert(
+            quest_battle_counter_key("single_battle_clear_count", 1, 1_004_002),
+            3,
+        );
+        assert_eq!(
+            compute_progress(1, mission, &context, &counters, 99, catalog),
+            3
+        );
+        let boss = catalog.categories[&3]
+            .iter()
+            .find(|m| m.id == 1416)
+            .unwrap();
+        assert!(!quest_matches_scope(boss, 1_001_001));
+        assert!(quest_matches_scope(boss, 1_014_001));
+    }
+
+    #[test]
+    fn portable_quest_counts_preserve_battle_mode_and_imported_progress() {
+        let catalog = mission_catalog().unwrap();
+        let mission = catalog.categories[&1].iter().find(|m| m.id == 42).unwrap();
+        let mut root = Map::from_iter([
+            ("user_info".to_owned(), json!({"rank_point": 0})),
+            (
+                "quest_progress".to_owned(),
+                json!({"1": [{
+                    "quest_id": 1_004_002, "finished": true,
+                    "single_clear_count": 0, "multi_clear_count": 3
+                }]}),
+            ),
+        ]);
+        let mut counters = BTreeMap::new();
+        let context = build_context(&root, catalog, &counters).unwrap();
+        assert_eq!(
+            compute_progress(1, mission, &context, &counters, 99, catalog),
+            0
+        );
+        assert_eq!(
+            battle_progress_for_category(&context, "single_battle_clear_count", 1),
+            0
+        );
+        assert_eq!(
+            battle_progress_for_category(&context, "multi_battle_clear_count", 1),
+            3
+        );
+        root["quest_progress"]["1"][0]["single_clear_count"] = json!(4);
+        counters.insert(
+            quest_battle_counter_key("single_battle_clear_count", 1, 1_004_002),
+            1,
+        );
+        let context = build_context(&root, catalog, &counters).unwrap();
+        assert_eq!(
+            compute_progress(1, mission, &context, &counters, 99, catalog),
+            4
+        );
+        // Legacy snapshots with known multiplayer history must not imply a solo clear.
+        root["quest_progress"]["1"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("single_clear_count");
+        root["quest_progress"]["1"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("multi_clear_count");
+        counters.clear();
+        counters.insert(
+            quest_battle_counter_key("multi_battle_clear_count", 1, 1_004_002),
+            3,
+        );
+        let context = build_context(&root, catalog, &counters).unwrap();
+        assert_eq!(
+            compute_progress(1, mission, &context, &counters, 99, catalog),
+            0
+        );
+    }
+
     // //// 应用任务等级目标并保证阶段奖励幂等 [@x380kkm 2026-08-23] ////
     #[test]
     fn applies_mission_rewards_once_per_receipt() {
@@ -1127,14 +1539,15 @@ mod tests {
         assert_eq!(stage.target, Some(1));
         let receipt = "5:11010:1";
         if !has_stage_receipt(&root, receipt).unwrap() {
-            apply_rewards(&mut root, &stage.rewards, 1).unwrap();
+            apply_rewards(&mut root, &stage.rewards, 1, 1).unwrap();
             mark_stage_received(&mut root, receipt.to_owned()).unwrap();
         }
         if !has_stage_receipt(&root, receipt).unwrap() {
-            apply_rewards(&mut root, &stage.rewards, 1).unwrap();
+            apply_rewards(&mut root, &stage.rewards, 1, 1).unwrap();
             mark_stage_received(&mut root, receipt.to_owned()).unwrap();
         }
-        assert_eq!(root["item_list"]["101"], 5);
+        assert_eq!(root["earned_degree_ids"], json!([11010]));
+        assert_eq!(root["item_list"], json!({}));
         assert_eq!(root["user_info"]["free_mana"], 10);
     }
     // //// /应用任务等级目标并保证阶段奖励幂等 ////

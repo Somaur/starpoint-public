@@ -147,8 +147,8 @@ fn upgrades_equipment_and_persists_resources() {
         5_030_037
     );
     assert_eq!(sold_equipment.data["equipment_list"][0]["stack"], 0);
-    assert_eq!(sold_equipment.data["item_list"]["100000"], 20);
-    assert_eq!(sold_equipment.data["item_list"]["5040028"], 3);
+    assert_eq!(sold_equipment.data["item_list"]["100000"], 25);
+    assert_eq!(sold_equipment.data["item_list"]["5040028"], 4);
 
     let missing_equipment = cn_support::send_request(
         service.port(),
@@ -224,9 +224,9 @@ fn upgrades_equipment_and_persists_resources() {
     assert_eq!(equipment["stack"], 0);
     assert_eq!(equipment["protection"], true);
     assert!(loaded.data["user_equipment_list"].get("5040028").is_none());
-    assert_eq!(loaded.data["item_list"]["100000"], 20);
+    assert_eq!(loaded.data["item_list"]["100000"], 25);
     assert_eq!(loaded.data["item_list"]["5030037"], 2);
-    assert_eq!(loaded.data["item_list"]["5040028"], 3);
+    assert_eq!(loaded.data["item_list"]["5040028"], 4);
     let history = decode_response::<Value>(&cn_support::send_request(
         service.port(),
         "/api/index.php/history/receive",
@@ -242,9 +242,9 @@ fn upgrades_equipment_and_persists_resources() {
             .filter_map(|entry| entry["number"].as_i64())
             .sum::<i64>()
     };
-    assert_eq!(received(100_000), 45);
+    assert_eq!(received(100_000), 50);
     assert_eq!(received(5_030_037), 2);
-    assert_eq!(received(5_040_028), 3);
+    assert_eq!(received(5_040_028), 4);
     service.stop().expect("service stops cleanly");
 
     let restarted = PersonalService::start(root.path(), 0).expect("service restarts");
@@ -256,7 +256,7 @@ fn upgrades_equipment_and_persists_resources() {
             viewer_id,
         }),
     ));
-    assert_eq!(restarted_load.data["item_list"]["100000"], 20);
+    assert_eq!(restarted_load.data["item_list"]["100000"], 25);
     assert!(restarted_load.data["user_equipment_list"]
         .get("5040028")
         .is_none());
@@ -269,3 +269,70 @@ fn upgrades_equipment_and_persists_resources() {
     restarted.stop().expect("service stops cleanly");
 }
 // //// /验证 CN 装备生命周期资源和快照持久化 ////
+
+#[test]
+fn selling_the_last_copy_grants_previewed_rewards_exactly_once() {
+    let root = TempDir::new().unwrap();
+    let service = PersonalService::start(root.path(), 0).unwrap();
+    let viewer_id = decode_response::<SignupData>(&cn_support::send_request(
+        service.port(),
+        "/api/index.php/tool/signup",
+        &encode_request(&SignupRequest { device_id: 44 }),
+    ))
+    .data_headers
+    .viewer_id;
+    let token = format!("Bearer {}", service.management_token());
+    let mail = serde_json::json!({"viewer_id":viewer_id,"title":"Last copy","body":"QA","sender":"QA",
+        "rewards":{"equipmentList":{"3040006":1}}});
+    let created = request_with_headers(
+        service.port(),
+        "POST",
+        "/v1/mails",
+        "application/json",
+        &[("Authorization", token.as_str())],
+        serde_json::to_string(&mail).unwrap().as_bytes(),
+    );
+    assert!(created.starts_with("HTTP/1.1 201 Created"));
+    cn_support::send_request(
+        service.port(),
+        "/api/index.php/mail/receive_all",
+        &encode_request(&MailReceiveAllRequest { viewer_id }),
+    );
+    let body = encode_request(&SellEquipmentRequest {
+        viewer_id,
+        api_count: 10,
+        equipment_list: vec![SellEquipmentItem {
+            equipment_id: 3_040_006,
+            number: None,
+        }],
+    });
+    let sold = decode_response::<Value>(&cn_support::send_request(
+        service.port(),
+        "/api/index.php/equipment/sell_equipment",
+        &body,
+    ));
+    assert_eq!(sold.data["item_list"]["100000"], 3);
+    assert_eq!(sold.data["item_list"]["3040006"], 1);
+    assert_eq!(sold.data["item_list"]["990008"], 1);
+    let repeated = cn_support::send_request(
+        service.port(),
+        "/api/index.php/equipment/sell_equipment",
+        &body,
+    );
+    assert!(repeated.contains("equipment_not_owned"));
+    service.stop().unwrap();
+    let restarted = PersonalService::start(root.path(), 0).unwrap();
+    let loaded = decode_response::<Value>(&cn_support::send_request(
+        restarted.port(),
+        "/api/index.php/load",
+        &encode_request(&LoadRequest {
+            viewer_id,
+            keychain: viewer_id,
+        }),
+    ));
+    assert!(loaded.data["user_equipment_list"].get("3040006").is_none());
+    assert_eq!(loaded.data["item_list"]["100000"], 3);
+    assert_eq!(loaded.data["item_list"]["3040006"], 1);
+    assert_eq!(loaded.data["item_list"]["990008"], 1);
+    restarted.stop().unwrap();
+}

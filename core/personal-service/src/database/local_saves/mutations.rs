@@ -337,6 +337,22 @@ pub(in crate::database) fn replace_local_save_data_in_transaction(
     slot_id: i64,
     data_json: &str,
 ) -> Result<LocalSaveRevision, LocalSaveStoreError> {
+    replace_local_save_data_with_labels(
+        transaction,
+        slot_id,
+        data_json,
+        "Before transfer upload",
+        "Transfer upload",
+    )
+}
+
+pub(super) fn replace_local_save_data_with_labels(
+    transaction: &Transaction<'_>,
+    slot_id: i64,
+    data_json: &str,
+    before_label: &str,
+    after_label: &str,
+) -> Result<LocalSaveRevision, LocalSaveStoreError> {
     let current_data = transaction
         .query_row(
             "SELECT player_snapshots.data_json
@@ -349,12 +365,7 @@ pub(in crate::database) fn replace_local_save_data_in_transaction(
         .optional()
         .map_err(local_save_storage_error)?
         .ok_or(LocalSaveStoreError::NotFound)?;
-    insert_local_save_revision(
-        transaction,
-        slot_id,
-        &current_data,
-        "Before transfer upload",
-    )?;
+    insert_local_save_revision(transaction, slot_id, &current_data, before_label)?;
     let updated = transaction
         .execute(
             "UPDATE player_snapshots
@@ -377,11 +388,11 @@ pub(in crate::database) fn replace_local_save_data_in_transaction(
             params![slot_id],
         )
         .map_err(local_save_storage_error)?;
-    insert_local_save_revision(transaction, slot_id, data_json, "Transfer upload")
+    insert_local_save_revision(transaction, slot_id, data_json, after_label)
 }
 // //// /覆盖本地存档并追加 revision ////
 
-fn insert_local_save_snapshot(
+pub(super) fn insert_local_save_snapshot(
     connection: &Connection,
     slot_id: i64,
     label: &str,
@@ -407,7 +418,7 @@ fn insert_local_save_snapshot(
 }
 
 // //// 生成未占用的本地存档显示名称 [@x380kkm 2026-08-31] ////
-fn available_local_save_name(
+pub(super) fn available_local_save_name(
     transaction: &Transaction<'_>,
     requested_name: &str,
 ) -> Result<String, LocalSaveStoreError> {

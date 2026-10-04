@@ -166,6 +166,36 @@ fn returns_town_character_encyclopedia_delta() {
 }
 // //// /验证城镇角色响应包含客户端图鉴增量 ////
 
+#[test]
+fn town_light_uses_client_keyword_and_retry_does_not_duplicate_reward() {
+    let root = TempDir::new().unwrap();
+    let service = PersonalService::start(root.path(), 0).unwrap();
+    let signup = decode_response::<SignupData>(&cn_support::send_request(
+        service.port(), "/api/index.php/tool/signup",
+        &encode_request(&SignupRequest { device_id: 441 }),
+    ));
+    let viewer_id = signup.data_headers.viewer_id;
+    let body = encode_request(&AddCharacterFromTownRequest { viewer_id, character_id: 10 });
+    let first = decode_response::<Value>(&cn_support::send_request(
+        service.port(), "/api/index.php/character/add_character_from_town", &body,
+    ));
+    assert_eq!(first.data["encyclopedia_info"], serde_json::json!({"100001001":{"read":false}}));
+    let second = decode_response::<Value>(&cn_support::send_request(
+        service.port(), "/api/index.php/character/add_character_from_town", &body,
+    ));
+    assert_eq!(second.data["encyclopedia_info"], serde_json::json!({}));
+    let loaded = decode_response::<Value>(&cn_support::send_request(
+        service.port(), "/api/index.php/load",
+        &encode_request(&LoadRequest { viewer_id, keychain: viewer_id }),
+    ));
+    assert_eq!(loaded.data["user_character_list"]["10"]["stack"], 0);
+    update_player_snapshot(root.path(), |data| {
+        assert_eq!(data["encyclopedia_list"]["100001001"]["read"], false);
+        assert!(data["encyclopedia_list"].get("11001").is_none());
+    });
+    service.stop().unwrap();
+}
+
 // //// 验证 CN 角色养成快照持久化 [@x380kkm 2026-07-24] ////
 #[test]
 fn persists_character_growth_operations() {

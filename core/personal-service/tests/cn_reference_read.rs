@@ -38,9 +38,9 @@ fn returns_typed_cn_response_families() {
         "/api/index.php/comic/get_list",
         json!({"viewer_id": viewer_id, "kind": 0, "page_index": 2}),
     );
-    assert_eq!(comic["comic_list"], json!([]));
-    assert_eq!(comic["current_page_index"], 2);
-    assert_eq!(comic["total_count"], 0);
+    assert_eq!(comic["comic_list"][0]["episode"], 1);
+    assert_eq!(comic["current_page_index"], 0);
+    assert_eq!(comic["total_count"], 1);
 
     let receive_history = request(
         service.port(),

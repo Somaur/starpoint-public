@@ -31,6 +31,9 @@ fn serves_management_assets_without_a_management_unlock_step() {
     assert!(page.contains("Referrer-Policy: no-referrer"));
     assert!(page.contains("Content-Security-Policy: default-src 'none'"));
     assert!(page.contains("星点个人服务"));
+    let dialogs = request(service.port(), "GET", "/manage/dialogs.js");
+    assert!(dialogs.starts_with("HTTP/1.1 200 OK"));
+    assert!(dialogs.contains("Content-Type: text/javascript; charset=utf-8"));
     assert!(page.contains("role=\"tablist\" aria-label=\"管理功能\""));
     assert_eq!(page.matches("role=\"tab\"").count(), 4);
     assert_eq!(page.matches("role=\"tabpanel\"").count(), 4);

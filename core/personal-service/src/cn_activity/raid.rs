@@ -115,6 +115,9 @@ fn summary(
         .unwrap_or_else(|| json!({}));
     let my_ranking = super::rush::player_ranking(root, FAMILY, body.event_id, 0);
     let boss = database.raid_boss_state(body.event_id)?;
+    let total_kill_count = boss
+        .total_kill_count
+        .saturating_add(local_kill_count(root, body.event_id));
     player.save(database)?;
     msgpack_response_at(
         body.viewer_id,
@@ -127,7 +130,7 @@ fn summary(
             "quest_list": {},
             "raid_boss": {
                 "hp_percentage": boss.hp_percentage,
-                "total_kill_count": boss.total_kill_count,
+                "total_kill_count": total_kill_count,
             },
             "endless_battle_next_round": next_round,
             "active_rush_battle_folder_id": active_folder,
@@ -277,6 +280,42 @@ fn battle_start(
         return Ok(response);
     }
     let response_time = server_time(database)?;
+    if let Some(active) = database.get_active_single_quest(player.account_id)? {
+        if active.play_id == body.play_id
+            && active.quest_id == body.quest_id
+            && active.category == QUEST_CATEGORY
+        {
+            return msgpack_response_at(body.viewer_id, false, response_time, json!({}));
+        }
+        return Ok(error_response("409 Conflict", "battle_already_active"));
+    }
+    let fixture = crate::cn_battle_assets::load_battle_fixture()?;
+    let Some(quest) = fixture
+        .quests
+        .get(&format!("{QUEST_CATEGORY}:{}", body.quest_id))
+    else {
+        return Ok(error_response("400 Bad Request", "quest_not_found"));
+    };
+    if quest.raid_event_id.or(quest.event_id) != Some(event_id) {
+        return Ok(error_response("400 Bad Request", "quest_event_mismatch"));
+    }
+    let account_id = player.account_id;
+    crate::cn_mission::prepare_periods(player.root_mut()?, database, account_id, response_time)?;
+    let prepared = match crate::cn_battle_state::prepare_battle_start(
+        &crate::cn_tutorial::encode_player_data(&player.data)?,
+        quest,
+        body.party_group_id,
+        response_time,
+    )? {
+        Ok(prepared) => prepared,
+        Err(crate::cn_battle_state::StartBattleFailure::InsufficientStamina) => {
+            return Ok(error_response("400 Bad Request", "insufficient_stamina"))
+        }
+        Err(crate::cn_battle_state::StartBattleFailure::InsufficientEntryItem) => {
+            return Ok(error_response("400 Bad Request", "insufficient_entry_item"))
+        }
+    };
+    player.data = crate::cn_tutorial::decode_player_data(&prepared.snapshot)?;
     let root = player.root_mut()?;
     state::set_current_event(root, FAMILY, event_id)?;
     party::raid_party_groups(root, FAMILY, event_id)?;
@@ -301,6 +340,14 @@ fn battle_start(
     msgpack_response_at(body.viewer_id, false, response_time, json!({}))
 }
 // //// /持久化 raid 活动战斗 ////
+
+pub(super) fn local_kill_count(root: &serde_json::Map<String, Value>, event_id: i64) -> i64 {
+    state::event_state(root, FAMILY, event_id)
+        .and_then(|event| event.get("local_kill_count"))
+        .and_then(Value::as_i64)
+        .unwrap_or_default()
+        .max(0)
+}
 
 fn select_folder(
     request: &HttpRequest,

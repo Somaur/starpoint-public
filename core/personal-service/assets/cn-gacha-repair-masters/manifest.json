@@ -1,0 +1,555 @@
+{
+  "formatVersion": 1,
+  "sourceBundleSha256": "a66543ab4901c4cc1ae488b9cbc469f09f8e48ceada9870924cbfd27d6102612",
+  "masters": [
+    {
+      "name": "gacha",
+      "entryPath": "production/upload/15/83d96aad4b9a46d19d19b6555d3f4232b29e25",
+      "sourceSha256": "abdfee9442f21fbe4ab29244e24b6d47bf54cb5a0049f14ffdb65ce553501023",
+      "sha256": "b4a88e416c1cd45a10d693f827d55828beda184ff174be3948f53aa43aceb718",
+      "rows": 1057
+    },
+    {
+      "name": "gacha_feature_content",
+      "entryPath": "production/upload/c8/79a1b712ae753afb0b5e796737fd141c8fa0ea",
+      "sourceSha256": "f632b5f27136f3a8c8dcfbe1cf8836556346e6b686d34828342dc549f51aaf77",
+      "sha256": "2be586155eecf7cd3acaab4256f3229a3f8f810ed04ab943ce55c3b0f67d55e2",
+      "rows": 1057
+    },
+    {
+      "name": "gacha_campaign",
+      "entryPath": "production/upload/74/e7be1b0da0fd069aba147e2fd92da2b427d86e",
+      "sourceSha256": "ccab098df27fa34ec7b6d8ebc19265ba498c7482295b08ccdf3ed3a4d363154e",
+      "sha256": "53df7680af471721c2701a3891359b2d97f9c3ca7fc548f6fc4dd8c3cd5927ab",
+      "rows": 164
+    },
+    {
+      "name": "feature_banner",
+      "entryPath": "production/upload/8c/82c8e05db4ce4f8a06bcd25f90bbda2967808b",
+      "sourceSha256": "6e6cab7e6c8c02071f36aa38224a7a648c4532b8119c5d651d4ca10eb62c5185",
+      "sha256": "61581d88b0f768e4258a801db374673ae33d4b0f5cd89425da2f8ec9b2128cf6",
+      "rows": 603
+    }
+  ],
+  "repairs": {
+    "inherited": {
+      "44": "1512",
+      "61": "1",
+      "62": "5",
+      "63": "6",
+      "64": "7",
+      "65": "12",
+      "66": "8",
+      "67": "8",
+      "68": "10",
+      "69": "11",
+      "72": "14",
+      "73": "16",
+      "74": "17",
+      "75": "19",
+      "76": "20",
+      "77": "18",
+      "78": "8",
+      "79": "21",
+      "80": "24",
+      "81": "23",
+      "82": "25",
+      "83": "26",
+      "84": "27",
+      "85": "31",
+      "86": "28",
+      "1501": "29",
+      "1503": "30",
+      "1504": "35",
+      "1505": "39",
+      "1506": "33",
+      "1508": "37",
+      "1509": "34",
+      "1510": "41",
+      "1511": "43",
+      "1615": "127",
+      "5008": "3",
+      "5009": "5000",
+      "5011": "5002",
+      "5013": "5004",
+      "5015": "5006",
+      "25008": "15008"
+    },
+    "imageFallbacks": [
+      {
+        "id": "16",
+        "index": "1",
+        "original": "dynamic/gacha_banner/thunder_element_pickup_01",
+        "fallback": "dynamic/gacha_list_banner/thunder_element_pickup_01"
+      },
+      {
+        "id": "18",
+        "index": "1",
+        "original": "dynamic/gacha_banner/black_element_pickup_01",
+        "fallback": "dynamic/gacha_list_banner/black_element_pickup_01"
+      },
+      {
+        "id": "20",
+        "index": "1",
+        "original": "dynamic/gacha_banner/white_element_pickup_01",
+        "fallback": "dynamic/gacha_list_banner/white_element_pickup_01"
+      },
+      {
+        "id": "24",
+        "index": "1",
+        "original": "dynamic/gacha_banner/green_element_pickup_01",
+        "fallback": "dynamic/gacha_list_banner/green_element_pickup_01"
+      },
+      {
+        "id": "26",
+        "index": "1",
+        "original": "dynamic/gacha_banner/thunder_element_pickup_02",
+        "fallback": "dynamic/gacha_list_banner/thunder_element_pickup_02"
+      },
+      {
+        "id": "28",
+        "index": "1",
+        "original": "dynamic/gacha_banner/red_element_pickup_01",
+        "fallback": "dynamic/gacha_list_banner/red_element_pickup_01"
+      },
+      {
+        "id": "30",
+        "index": "1",
+        "original": "dynamic/gacha_banner/white_element_pickup_02",
+        "fallback": "dynamic/gacha_list_banner/white_element_pickup_02"
+      },
+      {
+        "id": "32",
+        "index": "1",
+        "original": "dynamic/gacha_banner/black_element_pickup_02",
+        "fallback": "dynamic/gacha_list_banner/black_element_pickup_02"
+      },
+      {
+        "id": "36",
+        "index": "1",
+        "original": "dynamic/gacha_banner/green_element_pickup_02",
+        "fallback": "dynamic/gacha_list_banner/green_element_pickup_02"
+      },
+      {
+        "id": "38",
+        "index": "1",
+        "original": "dynamic/gacha_banner/blue_element_pickup_01",
+        "fallback": "dynamic/gacha_list_banner/blue_element_pickup_01"
+      },
+      {
+        "id": "70",
+        "index": "1",
+        "original": "dynamic/gacha_banner/female_character_pickup_2022",
+        "fallback": "dynamic/gacha_list_banner/woman_character_pickup_01"
+      },
+      {
+        "id": "71",
+        "index": "1",
+        "original": "dynamic/gacha_banner/female_character_pickup_2022",
+        "fallback": "dynamic/gacha_list_banner/xmas19"
+      },
+      {
+        "id": "73",
+        "index": "1",
+        "original": "dynamic/gacha_banner/thunder_element_pickup_01",
+        "fallback": "dynamic/gacha_list_banner/thunder_element_pickup_01"
+      },
+      {
+        "id": "76",
+        "index": "1",
+        "original": "dynamic/gacha_banner/white_element_pickup_01",
+        "fallback": "dynamic/gacha_list_banner/white_element_pickup_01"
+      },
+      {
+        "id": "77",
+        "index": "1",
+        "original": "dynamic/gacha_banner/black_element_pickup_01",
+        "fallback": "dynamic/gacha_list_banner/black_element_pickup_01"
+      },
+      {
+        "id": "80",
+        "index": "1",
+        "original": "dynamic/gacha_banner/green_element_pickup_01",
+        "fallback": "dynamic/gacha_list_banner/green_element_pickup_01"
+      },
+      {
+        "id": "83",
+        "index": "1",
+        "original": "dynamic/gacha_banner/thunder_element_pickup_02",
+        "fallback": "dynamic/gacha_list_banner/thunder_element_pickup_02"
+      },
+      {
+        "id": "86",
+        "index": "1",
+        "original": "dynamic/gacha_banner/red_element_pickup_01",
+        "fallback": "dynamic/gacha_list_banner/red_element_pickup_01"
+      },
+      {
+        "id": "87",
+        "index": "1",
+        "original": "dynamic/gacha_banner/common_character_pickup_06",
+        "fallback": "dynamic/gacha_list_banner/common_character_pickup_06"
+      },
+      {
+        "id": "91",
+        "index": "1",
+        "original": "dynamic/gacha_banner/red_element_character_pickup_01",
+        "fallback": "dynamic/gacha_list_banner/red_element_character_pickup_01"
+      },
+      {
+        "id": "93",
+        "index": "1",
+        "original": "dynamic/gacha_banner/yellow_element_character_pickup_03",
+        "fallback": "dynamic/gacha_list_banner/yellow_element_character_pickup_03"
+      },
+      {
+        "id": "95",
+        "index": "1",
+        "original": "dynamic/gacha_banner/common_character_pickup_07",
+        "fallback": "dynamic/gacha_list_banner/common_character_pickup_07"
+      },
+      {
+        "id": "1500",
+        "index": "1",
+        "original": "dynamic/gacha_banner/black_element_pickup_02",
+        "fallback": "dynamic/gacha_list_banner/black_element_pickup_02"
+      },
+      {
+        "id": "1503",
+        "index": "1",
+        "original": "dynamic/gacha_banner/white_element_pickup_02",
+        "fallback": "dynamic/gacha_list_banner/white_element_pickup_02"
+      },
+      {
+        "id": "1507",
+        "index": "1",
+        "original": "dynamic/gacha_banner/blue_element_pickup_01",
+        "fallback": "dynamic/gacha_list_banner/blue_element_pickup_01"
+      },
+      {
+        "id": "1514",
+        "index": "1",
+        "original": "dynamic/gacha_banner/green_element_pickup_02",
+        "fallback": "dynamic/gacha_list_banner/green_element_pickup_02"
+      },
+      {
+        "id": "1518",
+        "index": "1",
+        "original": "dynamic/gacha_banner/black_element_pickup_02",
+        "fallback": "dynamic/gacha_list_banner/starpoint_generated/1518"
+      },
+      {
+        "id": "1520",
+        "index": "1",
+        "original": "dynamic/gacha_banner/blue_element_pickup_01",
+        "fallback": "dynamic/gacha_list_banner/starpoint_generated/1520"
+      },
+      {
+        "id": "1523",
+        "index": "1",
+        "original": "dynamic/gacha_banner/gacha_pickup_anvcharacter",
+        "fallback": "dynamic/gacha_list_banner/gacha_pickup_anvcharacter01"
+      },
+      {
+        "id": "1532",
+        "index": "1",
+        "original": "dynamic/gacha_banner/female_character_pickup_2022",
+        "fallback": "dynamic/gacha_list_banner/starpoint_generated/1532"
+      },
+      {
+        "id": "1540",
+        "index": "1",
+        "original": "dynamic/gacha_banner/normal_character_pickup_1",
+        "fallback": "dynamic/gacha_list_banner/normal_character_pickup_1"
+      },
+      {
+        "id": "1543",
+        "index": "1",
+        "original": "dynamic/gacha_banner/blue_element_character_pickup_01",
+        "fallback": "dynamic/gacha_list_banner/blue_element_character_pickup_01"
+      },
+      {
+        "id": "1544",
+        "index": "1",
+        "original": "dynamic/gacha_banner/normal_character_pickup_2",
+        "fallback": "dynamic/gacha_list_banner/normal_character_pickup_2"
+      },
+      {
+        "id": "1546",
+        "index": "1",
+        "original": "dynamic/gacha_banner/common_character_pickup_02",
+        "fallback": "dynamic/gacha_list_banner/common_character_pickup_02"
+      },
+      {
+        "id": "1547",
+        "index": "1",
+        "original": "dynamic/gacha_banner/new_character_pickup_37",
+        "fallback": "dynamic/gacha_list_banner/new_character_pickup_37"
+      },
+      {
+        "id": "1553",
+        "index": "1",
+        "original": "dynamic/gacha_banner/yellow_element_character_pickup_02",
+        "fallback": "dynamic/gacha_list_banner/yellow_element_character_pickup_02"
+      },
+      {
+        "id": "1554",
+        "index": "1",
+        "original": "dynamic/gacha_banner/white_element_character_pickup_01",
+        "fallback": "dynamic/gacha_list_banner/white_element_character_pickup_01"
+      },
+      {
+        "id": "1560",
+        "index": "1",
+        "original": "dynamic/gacha_banner/common_character_pickup_03",
+        "fallback": "dynamic/gacha_list_banner/common_character_pickup_03"
+      },
+      {
+        "id": "1563",
+        "index": "1",
+        "original": "dynamic/gacha_banner/common_character_pickup_04",
+        "fallback": "dynamic/gacha_list_banner/common_character_pickup_04"
+      },
+      {
+        "id": "1564",
+        "index": "1",
+        "original": "dynamic/gacha_banner/common_character_pickup_05",
+        "fallback": "dynamic/gacha_list_banner/common_character_pickup_05"
+      },
+      {
+        "id": "1566",
+        "index": "1",
+        "original": "dynamic/gacha_banner/common_character_pickup_06",
+        "fallback": "dynamic/gacha_list_banner/common_character_pickup_06"
+      },
+      {
+        "id": "1568",
+        "index": "1",
+        "original": "dynamic/gacha_banner/blue_element_character_pickup_02",
+        "fallback": "dynamic/gacha_list_banner/blue_element_character_pickup_02"
+      },
+      {
+        "id": "1570",
+        "index": "1",
+        "original": "dynamic/gacha_banner/red_element_character_pickup_01",
+        "fallback": "dynamic/gacha_list_banner/red_element_character_pickup_01"
+      },
+      {
+        "id": "1572",
+        "index": "1",
+        "original": "dynamic/gacha_banner/yellow_element_character_pickup_03",
+        "fallback": "dynamic/gacha_list_banner/yellow_element_character_pickup_03"
+      },
+      {
+        "id": "1573",
+        "index": "1",
+        "original": "dynamic/gacha_banner/common_character_pickup_07",
+        "fallback": "dynamic/gacha_list_banner/common_character_pickup_07"
+      },
+      {
+        "id": "5000",
+        "index": "1",
+        "original": "dynamic/gacha_banner/equipment_pickup_1",
+        "fallback": "dynamic/gacha_list_banner/equipment_pickup_1"
+      },
+      {
+        "id": "5002",
+        "index": "1",
+        "original": "dynamic/gacha_banner/equipment_pickup_2",
+        "fallback": "dynamic/gacha_list_banner/equipment_pickup_2"
+      },
+      {
+        "id": "5004",
+        "index": "1",
+        "original": "dynamic/gacha_banner/equipment_pickup_3",
+        "fallback": "dynamic/gacha_list_banner/equipment_pickup_3"
+      },
+      {
+        "id": "5006",
+        "index": "1",
+        "original": "dynamic/gacha_banner/equipment_pickup_4",
+        "fallback": "dynamic/gacha_list_banner/equipment_pickup_4"
+      },
+      {
+        "id": "5009",
+        "index": "1",
+        "original": "dynamic/gacha_banner/equipment_pickup_1",
+        "fallback": "dynamic/gacha_list_banner/equipment_pickup_1"
+      },
+      {
+        "id": "5011",
+        "index": "1",
+        "original": "dynamic/gacha_banner/equipment_pickup_2",
+        "fallback": "dynamic/gacha_list_banner/equipment_pickup_2"
+      },
+      {
+        "id": "5013",
+        "index": "1",
+        "original": "dynamic/gacha_banner/equipment_pickup_3",
+        "fallback": "dynamic/gacha_list_banner/equipment_pickup_3"
+      },
+      {
+        "id": "5015",
+        "index": "1",
+        "original": "dynamic/gacha_banner/equipment_pickup_4",
+        "fallback": "dynamic/gacha_list_banner/equipment_pickup_4"
+      },
+      {
+        "id": "10067",
+        "index": "1",
+        "original": "dynamic/gacha_banner/blue_element_character_pickup_01",
+        "fallback": "dynamic/gacha_list_banner/blue_element_character_pickup_01"
+      },
+      {
+        "id": "10069",
+        "index": "1",
+        "original": "dynamic/gacha_banner/common_character_pickup_02",
+        "fallback": "dynamic/gacha_list_banner/common_character_pickup_02"
+      },
+      {
+        "id": "10078",
+        "index": "1",
+        "original": "dynamic/gacha_banner/yellow_element_character_pickup_02",
+        "fallback": "dynamic/gacha_list_banner/yellow_element_character_pickup_02"
+      },
+      {
+        "id": "10079",
+        "index": "1",
+        "original": "dynamic/gacha_banner/white_element_character_pickup_01",
+        "fallback": "dynamic/gacha_list_banner/white_element_character_pickup_01"
+      },
+      {
+        "id": "10081",
+        "index": "1",
+        "original": "dynamic/gacha_banner/common_character_pickup_03",
+        "fallback": "dynamic/gacha_list_banner/common_character_pickup_03"
+      },
+      {
+        "id": "10083",
+        "index": "1",
+        "original": "dynamic/gacha_banner/common_character_pickup_04",
+        "fallback": "dynamic/gacha_list_banner/common_character_pickup_04"
+      },
+      {
+        "id": "10085",
+        "index": "1",
+        "original": "dynamic/gacha_banner/common_character_pickup_05",
+        "fallback": "dynamic/gacha_list_banner/common_character_pickup_05"
+      },
+      {
+        "id": "10088",
+        "index": "1",
+        "original": "dynamic/gacha_banner/blue_element_character_pickup_02",
+        "fallback": "dynamic/gacha_list_banner/blue_element_character_pickup_02"
+      },
+      {
+        "id": "15008",
+        "index": "1",
+        "original": "dynamic/gacha_banner/equipment_pickup_5",
+        "fallback": "dynamic/gacha_list_banner/equipment_pickup_5"
+      },
+      {
+        "id": "15010",
+        "index": "1",
+        "original": "dynamic/gacha_banner/equipment_pickup_6",
+        "fallback": "dynamic/gacha_list_banner/equipment_pickup_6"
+      },
+      {
+        "id": "15012",
+        "index": "1",
+        "original": "dynamic/gacha_banner/equipment_pickup_7",
+        "fallback": "dynamic/gacha_list_banner/equipment_pickup_7"
+      },
+      {
+        "id": "25008",
+        "index": "1",
+        "original": "dynamic/gacha_banner/equipment_pickup_5",
+        "fallback": "dynamic/gacha_list_banner/equipment_pickup_5"
+      },
+      {
+        "id": "25010",
+        "index": "1",
+        "original": "dynamic/gacha_banner/equipment_pickup_7",
+        "fallback": "dynamic/gacha_list_banner/equipment_pickup_6"
+      },
+      {
+        "id": "25012",
+        "index": "1",
+        "original": "dynamic/gacha_banner/equipment_pickup_7",
+        "fallback": "dynamic/gacha_list_banner/equipment_pickup_7"
+      },
+      {
+        "id": "800000",
+        "index": "1",
+        "original": "dynamic/gacha_banner/star_heroes_1",
+        "fallback": "dynamic/gacha_list_banner/star_heroes_1"
+      },
+      {
+        "id": "800001",
+        "index": "1",
+        "original": "dynamic/gacha_banner/star_heroes_2",
+        "fallback": "dynamic/gacha_list_banner/star_heroes_2"
+      },
+      {
+        "id": "800002",
+        "index": "1",
+        "original": "dynamic/gacha_banner/star_heroes_3",
+        "fallback": "dynamic/gacha_list_banner/star_heroes_3"
+      },
+      {
+        "id": "800003",
+        "index": "1",
+        "original": "dynamic/gacha_banner/star_heroes_4",
+        "fallback": "dynamic/gacha_list_banner/star_heroes_4"
+      },
+      {
+        "id": "800004",
+        "index": "1",
+        "original": "dynamic/gacha_banner/star_heroes_5",
+        "fallback": "dynamic/gacha_list_banner/star_heroes_5"
+      },
+      {
+        "id": "800005",
+        "index": "1",
+        "original": "dynamic/gacha_banner/star_heroes_6",
+        "fallback": "dynamic/gacha_list_banner/star_heroes_6"
+      },
+      {
+        "id": "800100",
+        "index": "1",
+        "original": "dynamic/gacha_banner/star_heroes_100",
+        "fallback": "dynamic/gacha_list_banner/star_heroes_100"
+      },
+      {
+        "id": "800200",
+        "index": "1",
+        "original": "dynamic/gacha_banner/star_heroes_200",
+        "fallback": "dynamic/gacha_list_banner/star_heroes_200"
+      },
+      {
+        "id": "800201",
+        "index": "1",
+        "original": "dynamic/gacha_banner/star_heroes_201",
+        "fallback": "dynamic/gacha_list_banner/star_heroes_201"
+      },
+      {
+        "id": "800202",
+        "index": "1",
+        "original": "dynamic/gacha_banner/star_heroes_5",
+        "fallback": "dynamic/gacha_list_banner/star_heroes_5"
+      },
+      {
+        "id": "800203",
+        "index": "1",
+        "original": "dynamic/gacha_banner/star_heroes_6",
+        "fallback": "dynamic/gacha_list_banner/star_heroes_6"
+      },
+      {
+        "id": "800205",
+        "index": "1",
+        "original": "dynamic/gacha_banner/star_heroes_202307",
+        "fallback": "dynamic/gacha_list_banner/star_heroes_202307"
+      }
+    ]
+  }
+}

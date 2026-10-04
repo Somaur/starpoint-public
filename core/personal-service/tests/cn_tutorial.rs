@@ -332,14 +332,146 @@ fn replays_processed_tutorial_gacha() {
     let viewer_id = signup.data_headers.viewer_id;
     set_incomplete_tutorial_snapshot(root.path());
 
+    set_virtual_time(&service, "2026-09-01T12:00:00.000Z");
     let first = update_step(&service, viewer_id, 14, false, Some(TUTORIAL_GACHA_ID));
+    set_virtual_time(&service, "2026-09-02T12:00:00.000Z");
     let replay = update_step(&service, viewer_id, 14, false, Some(TUTORIAL_GACHA_ID));
     assert_eq!(replay.gacha, first.gacha);
     assert_eq!(replay.character_list, first.character_list);
     assert_eq!(replay.user_info["free_vmoney"], 0);
     service.stop().expect("service stops cleanly");
+    let restarted = PersonalService::start(root.path(), 0).expect("service restarts");
+    let replay = update_step(&restarted, viewer_id, 14, false, Some(TUTORIAL_GACHA_ID));
+    assert_eq!(replay.gacha, first.gacha);
+    assert_eq!(replay.character_list, first.character_list);
+    assert_eq!(replay.user_info["free_vmoney"], 0);
+    restarted.stop().expect("restarted service stops cleanly");
 }
 // //// /重放已处理的教程扭蛋响应 ////
+
+#[test]
+fn fresh_tutorial_draws_match_the_android_preload_and_rarity_contract() {
+    let contract: Value = serde_json::from_str(include_str!("../assets/cn-tutorial-gacha.json")).unwrap();
+    let guarantee: Value = serde_json::from_str(include_str!("../../../assets/gacha_movie_seeds_normal_guarantee.json")).unwrap();
+    let master: Value = serde_json::from_str(include_str!("../../../assets/gacha.json")).unwrap();
+    assert_eq!(contract["rankRates"], json!([5.0, 95.0, 0.0]));
+    let root = TempDir::new().unwrap();
+    let service = PersonalService::start(root.path(), 0).unwrap();
+    let viewer_id = decode_response::<SignupData>(&cn_support::send_request(
+        service.port(), "/api/index.php/tool/signup",
+        &encode_request(&SignupRequest { device_id: 39 }),
+    )).data_headers.viewer_id;
+    // Cover the early timeline fallback and both later tutorial pool formats.
+    // The old normal draw produced three-star results 70% of the time.
+    for gacha_id in [1, 63, 1704] {
+        for _ in 0..12 {
+            set_incomplete_tutorial_snapshot(root.path());
+            let result = update_step(&service, viewer_id, 14, false, Some(gacha_id));
+            let draw = &result.gacha["draw"][0];
+            assert_eq!(draw["movie_id"], contract["movieId"], "tutorial movie must already be preloaded");
+            let rank = master[gacha_id.to_string()]["pool"].as_object().unwrap().iter()
+                .find(|(_, entries)| entries.as_array().unwrap().iter().any(|item| item["id"] == draw["character_id"]))
+                .map(|(rank, _)| rank.as_str()).unwrap();
+            assert!(matches!(rank, "1" | "2"), "tutorial must never select an unsupported three-star animation");
+            assert!(guarantee[rank]["0"].as_array().unwrap().contains(&draw["seed"]));
+            assert_eq!(result.user_info["free_vmoney"], 0);
+            assert_eq!(update_step(&service, viewer_id, 14, false, Some(gacha_id)).gacha, result.gacha);
+        }
+    }
+    service.stop().unwrap();
+}
+
+#[test]
+fn resumes_each_tutorial_rarity_with_a_matching_movie_without_charging_again() {
+    let normal: Value = serde_json::from_str(include_str!("../../../assets/gacha_movie_seeds_normal.json")).unwrap();
+    let guarantee: Value = serde_json::from_str(include_str!("../../../assets/gacha_movie_seeds_normal_guarantee.json")).unwrap();
+    // Include the exact five-star character from the native C3032 report.
+    for (character_id, rarity) in [(311001, 3), (1, 4), (131001, 5)] {
+        let root = TempDir::new().unwrap();
+        let service = PersonalService::start(root.path(), 0).unwrap();
+        let viewer_id = decode_response::<SignupData>(&cn_support::send_request(
+            service.port(), "/api/index.php/tool/signup",
+            &encode_request(&SignupRequest { device_id: 29 }),
+        )).data_headers.viewer_id;
+        set_incomplete_tutorial_snapshot(root.path());
+        let db = Connection::open(root.path().join("personal-service.sqlite3")).unwrap();
+        let serialized: String = db.query_row("SELECT data_json FROM player_snapshots", [], |row| row.get(0)).unwrap();
+        let mut data: Value = serde_json::from_str(&serialized).unwrap();
+        data["user_tutorial"] = json!({"tutorial_step":15,"skip_flag":false,"powerflip_failure":0});
+        data["tutorial_gacha"] = json!({"character_id":character_id,"gacha_id":1});
+        data["user_character_list"][character_id.to_string()] = data["user_character_list"]["1"].clone();
+        data["user_info"]["free_vmoney"] = json!(0);
+        data["user_info"]["vmoney"] = json!(0);
+        let before = serde_json::to_string(&data).unwrap();
+        db.execute("UPDATE player_snapshots SET data_json=?1", [&before]).unwrap();
+        let first = update_step(&service, viewer_id, 14, false, Some(1));
+        let draw = &first.gacha["draw"][0];
+        let (movie, seeds) = if rarity == 3 { ("normal", &normal) } else { ("normal_guarantee", &guarantee) };
+        assert_eq!(draw["character_id"], character_id);
+        assert_eq!(draw["movie_id"], movie);
+        assert!(seeds[(6-rarity).to_string()]["0"].as_array().unwrap().contains(&draw["seed"]));
+        assert_eq!(first.user_info["free_vmoney"], 0);
+        assert_eq!(db.query_row("SELECT data_json FROM player_snapshots", [], |row| row.get::<_, String>(0)).unwrap(), before);
+        drop(db);
+        service.stop().unwrap();
+        let service = PersonalService::start(root.path(), 0).unwrap();
+        assert_eq!(update_step(&service, viewer_id, 14, false, Some(1)).gacha, first.gacha);
+        service.stop().unwrap();
+    }
+}
+
+fn set_virtual_time(service: &PersonalService, iso: &str) {
+    let authorization = format!("Bearer {}", service.management_token());
+    let body = json!({"enabled": true, "iso": iso, "rate": 1.0}).to_string();
+    let response = support::request_with_headers(
+        service.port(),
+        "PUT",
+        "/v1/time",
+        "application/json",
+        &[("Authorization", authorization.as_str())],
+        body.as_bytes(),
+    );
+    assert!(response.starts_with("HTTP/1.1 200 OK"));
+}
+
+#[test]
+fn terminal_tutorial_steps_migrate_without_trigger_12_or_extra_quest_clears() {
+    let root = TempDir::new().unwrap();
+    let service = PersonalService::start(root.path(), 0).unwrap();
+    let signup = decode_response::<SignupData>(&cn_support::send_request(
+        service.port(), "/api/index.php/tool/signup",
+        &encode_request(&SignupRequest { device_id: 704 }),
+    ));
+    let viewer_id = signup.data_headers.viewer_id;
+    let database = Connection::open(root.path().join("personal-service.sqlite3")).unwrap();
+    for (skip, step, complete) in [(false, 16, false), (false, 17, true), (true, 5, false), (true, 6, true)] {
+        set_incomplete_tutorial_snapshot(root.path());
+        let raw: String = database.query_row("SELECT data_json FROM player_snapshots", [], |r| r.get(0)).unwrap();
+        let mut data: Value = serde_json::from_str(&raw).unwrap();
+        data["user_tutorial"] = json!({"tutorial_step":step, "skip_flag":skip});
+        data["user_triggered_tutorial"] = json!([6, 4, 18, 19, 14, 51, 101, 5]);
+        data["preserve_main_quest_progress"] = json!(true);
+        data["quest_progress"] = json!({"1":[{"quest_id":1001001,"finished":true}]});
+        database.execute("UPDATE player_snapshots SET data_json=?1", [data.to_string()]).unwrap();
+        for _ in 0..2 {
+            let loaded = decode_response::<Value>(&cn_support::send_request(service.port(), "/api/index.php/load",
+                &encode_request(&LoadRequest { keychain: viewer_id, viewer_id })));
+            assert_eq!(loaded.data["user_tutorial"].is_null(), complete, "skip={skip}, step={step}");
+            assert_eq!(loaded.data["quest_progress"]["1"].as_array().unwrap().len(), 1);
+            assert_eq!(loaded.data["user_triggered_tutorial"], data["user_triggered_tutorial"]);
+        }
+        let raw: String = database.query_row("SELECT data_json FROM player_snapshots", [], |r| r.get(0)).unwrap();
+        assert_eq!(serde_json::from_str::<Value>(&raw).unwrap()["user_tutorial"].is_null(), complete);
+        if !complete {
+            let next = update_step(&service, viewer_id, step, skip, None);
+            assert_eq!(next.step, 17);
+            let loaded = decode_response::<Value>(&cn_support::send_request(service.port(), "/api/index.php/load",
+                &encode_request(&LoadRequest { keychain: viewer_id, viewer_id })));
+            assert!(loaded.data["user_tutorial"].is_null());
+        }
+    }
+    service.stop().unwrap();
+}
 
 fn update_step(
     service: &PersonalService,

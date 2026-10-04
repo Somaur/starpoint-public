@@ -675,9 +675,9 @@ fn resets_daily_player_state_once_per_virtual_date() {
             .find(|entry| entry["id"].as_i64() == Some(challenge_id))
             .and_then(|entry| entry["point"].as_i64())
     };
-    assert_eq!(point(1), Some(3));
-    assert_eq!(point(251), Some(2));
-    assert_eq!(point(5_001), Some(10));
+    assert_eq!(point(1), Some(9999));
+    assert_eq!(point(251), Some(999));
+    assert_eq!(point(5_001), Some(9999));
     assert_eq!(point(10_008), Some(1));
     assert_eq!(point(999_999), Some(7));
     assert_eq!(
@@ -710,7 +710,8 @@ fn resets_daily_player_state_once_per_virtual_date() {
     let challenge_points = same_day.data["user_daily_challenge_point_list"]
         .as_array()
         .expect("challenge points are an array");
-    assert_eq!(challenge_points.len(), 2);
+    assert_eq!(challenge_points.len(), 283);
+    assert_eq!(challenge_points[0]["campaign_list"], json!([]));
     assert_eq!(challenge_points[0]["point"], 0);
     assert_eq!(challenge_points[1]["point"], 7);
     assert_eq!(

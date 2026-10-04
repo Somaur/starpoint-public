@@ -16,12 +16,7 @@ use starpoint_personal_service::PersonalService;
 use support::request_with_headers;
 use tempfile::TempDir;
 
-#[derive(Serialize)]
-struct AddCharacterRequest {
-    viewer_id: i64,
-    character_id: i64,
-    api_count: i64,
-}
+
 
 #[derive(Serialize)]
 struct BulkOverLimitRequest {
@@ -61,17 +56,13 @@ fn draws_and_persists_first_ex_boost() {
         &encode_request(&SignupRequest { device_id: 72 }),
     ));
     let viewer_id = signup.data_headers.viewer_id;
-    for api_count in 1..=6 {
-        decode_response::<Value>(&cn_support::send_request(
-            service.port(),
-            "/api/index.php/character/add_character_from_town",
-            &encode_request(&AddCharacterRequest {
-                viewer_id,
-                character_id: 1,
-                api_count,
-            }),
-        ));
-    }
+    // Seed duplicate copies directly; town recruitment is a one-time grant.
+    let connection = rusqlite::Connection::open(root.path().join("personal-service.sqlite3")).unwrap();
+    connection.execute(
+        "UPDATE player_snapshots SET data_json = json_set(data_json, '$.user_character_list.\"1\".stack', 6)",
+        [],
+    ).unwrap();
+    drop(connection);
     let bulk = decode_response::<Value>(&cn_support::send_request(
         service.port(),
         "/api/index.php/character/bulk_over_limit",

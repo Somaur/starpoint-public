@@ -82,6 +82,7 @@ pub(crate) struct BattleQuest {
     pub(crate) raid_event_id: Option<i64>,
     pub(crate) carnival_event_id: Option<i64>,
     pub(crate) carnival_folder_id: Option<i64>,
+    pub(crate) carnival_legacy_folder_id: Option<i64>,
     pub(crate) carnival_difficulty_score: Option<i64>,
     pub(crate) carnival_time_limit_ms: Option<i64>,
     #[serde(default)]
@@ -89,7 +90,15 @@ pub(crate) struct BattleQuest {
     #[serde(default)]
     pub(crate) entry_item_count: i64,
     #[serde(default)]
+    pub(crate) completion_items: Vec<CompletionItem>,
+    #[serde(default)]
     pub(crate) stamina_cost: i64,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct CompletionItem {
+    pub(crate) id: i64,
+    pub(crate) count: i64,
 }
 
 #[allow(dead_code)]

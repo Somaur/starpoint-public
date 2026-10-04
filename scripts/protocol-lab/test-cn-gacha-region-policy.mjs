@@ -112,6 +112,11 @@ const rebuilt = buildCnGachaRegionPolicy(
     featureLinkEvidence,
 )
 assert.deepEqual(rebuilt, policy)
+assert.deepEqual(buildCnGachaRegionPolicy(
+    document,
+    Buffer.from(gachaBytes.toString("utf8").replace(/\r\n/g, "\n").replace(/\n/g, "\r\n")),
+    bannerResolution, rawOddsEvidence, featureLinkEvidence,
+), rebuilt, "Git CRLF checkout must not change the policy source hash")
 assert.deepEqual(policy.featureLinkSources, Object.fromEntries(featureLinkEvidence.tables
     .map((table) => [table.name, table.sourceSha256])))
 assert.deepEqual(policy.evidence, {

@@ -6,7 +6,7 @@
 use super::mails::MailReward;
 use super::ServiceDatabase;
 use crate::PersonalServiceError;
-use rusqlite::{params, Connection, Transaction};
+use rusqlite::{params, Connection};
 use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -108,7 +108,7 @@ impl ServiceDatabase {
     ) -> Result<(), PersonalServiceError> {
         let transaction = self
             .connection
-            .transaction()
+            .savepoint()
             .map_err(history_database_error)?;
         save_player_snapshot(&transaction, account_id, data)?;
         for ((category, mission_id), value) in progress {
@@ -170,7 +170,7 @@ impl ServiceDatabase {
 }
 
 pub(in crate::database) fn insert_receive_history_in_transaction(
-    transaction: &Transaction<'_>,
+    transaction: &Connection,
     account_id: i64,
     event_key: &str,
     created_at: i64,
@@ -239,7 +239,7 @@ pub(crate) fn mail_reward_history_entries(reward: &MailReward) -> Vec<ReceiveHis
 }
 
 fn save_player_snapshot(
-    transaction: &Transaction<'_>,
+    transaction: &Connection,
     account_id: i64,
     data: &str,
 ) -> Result<(), PersonalServiceError> {

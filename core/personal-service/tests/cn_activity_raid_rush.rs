@@ -30,6 +30,79 @@ fn send(service: &PersonalService, path: &str, body: Value) -> String {
     cn_support::send_request(service.port(), path, &encode_request(&body))
 }
 
+fn stored_player(root: &Path) -> Value {
+    let db = Connection::open(root.join("personal-service.sqlite3")).unwrap();
+    let data: String = db
+        .query_row(
+            "SELECT data_json FROM player_snapshots LIMIT 1",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    serde_json::from_str(&data).unwrap()
+}
+
+#[test]
+fn raid_native_start_charges_once_and_finish_counts_once() {
+    let root = TempDir::new().unwrap();
+    let service = PersonalService::start(root.path(), 0).unwrap();
+    let viewer_id = signup(&service, 968);
+    let before = stored_player(root.path())["user_info"]["stamina"]
+        .as_i64()
+        .unwrap();
+    let start = json!({"event_id":2,"is_auto_start_mode":true,"party_group_id":1,"play_id":"native-raid","quest_id":2001,"viewer_id":viewer_id});
+    for _ in 0..2 {
+        assert!(send(
+            &service,
+            "/api/index.php/event/raid/battle/start",
+            start.clone()
+        )
+        .starts_with("HTTP/1.1 200 OK"));
+        assert_eq!(
+            stored_player(root.path())["user_info"]["stamina"],
+            before - 8
+        );
+    }
+    let mut conflict = start.clone();
+    conflict["play_id"] = json!("another-battle");
+    assert!(
+        send(&service, "/api/index.php/event/raid/battle/start", conflict)
+            .starts_with("HTTP/1.1 409 Conflict")
+    );
+    let finish = json!({"viewer_id":viewer_id,"play_id":"native-raid","quest_id":2001,"category":23,"elapsed_time_ms":51420,"score":2517179,"add_mana":0,"is_accomplished":true,"statistics":{"party":{"characters":[{"id":1}],"unison_characters":[],"equipments":[]},"zones":[]}});
+    for _ in 0..2 {
+        assert!(send(
+            &service,
+            "/api/index.php/single_battle_quest/finish",
+            finish.clone()
+        )
+        .starts_with("HTTP/1.1 200 OK"));
+        for endpoint in ["get_boss", "summary"] {
+            let response = decode_response::<Value>(&send(
+                &service,
+                &format!("/api/index.php/event/raid/{endpoint}"),
+                json!({"viewer_id":viewer_id,"event_id":2}),
+            ));
+            assert_eq!(response.data["raid_boss"]["total_kill_count"], 1);
+        }
+    }
+    let mut insufficient = stored_player(root.path());
+    insufficient["user_info"]["stamina"] = json!(0);
+    insufficient["user_info"]["stamina_heal_time"] = json!(4_102_444_799_i64);
+    let db = Connection::open(root.path().join("personal-service.sqlite3")).unwrap();
+    db.execute(
+        "UPDATE player_snapshots SET data_json = ?1",
+        [insufficient.to_string()],
+    )
+    .unwrap();
+    let mut next = start;
+    next["play_id"] = json!("empty-stamina");
+    let denied = send(&service, "/api/index.php/event/raid/battle/start", next);
+    assert!(denied.contains("insufficient_stamina"), "{denied}");
+    assert_eq!(stored_player(root.path())["user_info"]["stamina"], 0);
+    service.stop().unwrap();
+}
+
 fn seed_rush_ranking_state(root: &Path, event_id: i64) {
     let database = Connection::open(root.join("personal-service.sqlite3"))
         .expect("service database is opened");
@@ -69,7 +142,7 @@ fn returns_raid_contract_and_persists_folder_battle_state() {
     let root = TempDir::new().expect("temporary service directory is created");
     let service = PersonalService::start(root.path(), 0).expect("service starts");
     let viewer_id = signup(&service, 68);
-    let event_id = 9_004;
+    let event_id = 2;
 
     let party = decode_response::<Value>(&send(
         &service,
@@ -148,7 +221,7 @@ fn returns_raid_contract_and_persists_folder_battle_state() {
             "is_auto_start_mode": false,
             "party_group_id": 1,
             "play_id": "raid-contract",
-            "quest_id": 9_004_001,
+            "quest_id": 2_001,
             "viewer_id": viewer_id,
         }),
     ));

@@ -173,6 +173,7 @@ fn bulk_over_limit(
                 Value::Array(mission_delta.mission_info),
             );
     }
+    crate::cn_mission::sync_reward_response(&mut response, &player_data, response_time);
     msgpack_response_at(body.viewer_id, false, response_time, response)
 }
 // //// /消耗所有可用角色副本完成批量突破 ////
@@ -196,10 +197,18 @@ fn add_character_from_town(
     let response_time = server_time(database)?;
     let mut player_data = decode_player_data(&snapshot.data)?;
     let root = require_root(&mut player_data)?;
-    grant_character(root, body.viewer_id, body.character_id, response_time)?;
+    // A town join is a one-time reward; replaying a request must not add copies.
+    if !require_object(root, "user_character_list")?.contains_key(&body.character_id.to_string()) {
+        grant_character(root, body.viewer_id, body.character_id, response_time)?;
+    }
     let response_character = town_character_response(root, body.character_id, response_time)?;
     let mut encyclopedia_info = Map::new();
-    encyclopedia_info.insert(format!("1{}01", body.character_id), json!({"read": false}));
+    if crate::cn_gacha::record_character_encyclopedia_state(root, body.character_id)? {
+        encyclopedia_info.insert(
+            crate::cn_gacha::character_encyclopedia_key(body.character_id),
+            json!({"read": false}),
+        );
+    }
     database.save_player_snapshot(snapshot.account_id, &encode_player_data(&player_data)?)?;
     msgpack_response_at(
         body.viewer_id,
@@ -335,11 +344,7 @@ fn receive_bond_token(
     if claimed {
         database.save_player_snapshot(snapshot.account_id, &encode_player_data(&player_data)?)?;
     }
-    msgpack_response_at(
-        body.viewer_id,
-        false,
-        server_time,
-        json!({
+    let mut response = json!({
             "user_info": {"bond_token": new_bond_token},
             "character_list": [response_character],
             "user_character_mana_node_list": {},
@@ -348,8 +353,9 @@ fn receive_bond_token(
             "mission_info": mission_delta.mission_info,
             "active_mission_list": mission_delta.active_mission_list,
             "mail_arrived": false,
-        }),
-    )
+        });
+    crate::cn_mission::sync_reward_response(&mut response, &player_data, server_time);
+    msgpack_response_at(body.viewer_id, false, server_time, response)
 }
 // //// /领取 CN 角色羁绊代币 ////
 
@@ -561,6 +567,7 @@ fn open_mana_board(
             .expect("CN Mana board response is an object")
             .insert("mission_info".to_owned(), Value::Array(mission_info));
     }
+    crate::cn_mission::sync_reward_response(&mut response, &player_data, server_time);
     msgpack_response_at(body.viewer_id, false, server_time, response)
 }
 // //// /按角色主表开启 CN Mana board ////
@@ -682,6 +689,7 @@ fn over_limit(
                 Value::Array(mission_delta.mission_info),
             );
     }
+    crate::cn_mission::sync_reward_response(&mut response, &player_data, server_time);
     msgpack_response_at(body.viewer_id, false, server_time, response)
 }
 

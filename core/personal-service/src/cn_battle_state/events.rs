@@ -10,6 +10,21 @@ use crate::cn_battle_rewards::{apply_reward_at, scale_drop_count, RewardResult};
 use crate::database::ActiveSingleQuest;
 use crate::PersonalServiceError;
 use serde_json::{json, Map, Value};
+mod carnival_rewards;
+pub(super) mod solo_time;
+pub(super) mod score_attack;
+
+#[cfg(test)]
+fn milestone_test_input(time: i64, score: i64) -> FinishBattleInput<'static> {
+    FinishBattleInput {
+        elapsed_time_ms: time, score, add_mana: 0, is_accomplished: true,
+        character_ids: &[1], main_character_ids: &[Some(1), None, None],
+        unison_character_ids: &[], equipment_ids: &[], ability_soul_ids: &[],
+        is_multi: false, power_flip_count: None, dash_count: None, skill_count: None,
+        extra_action_counts: [0; 3], max_skill_chain_count: None, max_combo_count: None,
+        is_host: None, is_mvp: None,
+    }
+}
 
 pub(super) struct EventFinishData {
     pub(super) rush_event: Value,
@@ -27,7 +42,7 @@ pub(super) fn apply_event_progress(
     drop_multiplier: i64,
     server_time: i64,
 ) -> Result<EventFinishData, PersonalServiceError> {
-    let (rush_event, rewards) = if active_quest.category == 24 {
+    let (rush_event, mut rewards) = if active_quest.category == 24 {
         apply_rush_event(root, fixture, quest, input, drop_multiplier, server_time)?
     } else {
         (Value::Null, RewardResult::default())
@@ -36,7 +51,13 @@ pub(super) fn apply_event_progress(
         record_raid_party(root, quest, input)?;
     }
     let carnival_event = if active_quest.category == 22 && input.is_accomplished {
-        apply_carnival_event(root, quest, input)?
+        let mut result = apply_carnival_event(root, quest, input)?;
+        let (ids, degrees, granted) =
+            carnival_rewards::grant(root, quest.carnival_event_id.unwrap(), server_time)?;
+        result["reward_ids"] = json!(ids);
+        result["new_degree_ids"] = json!(degrees);
+        rewards.merge(granted);
+        result
     } else {
         Value::Null
     };
@@ -230,6 +251,16 @@ fn record_raid_party(
     };
     let party = played_party(root, input);
     let event = cn_activity::activate_battle_event_state(root, "raid", event_id)?;
+    if input.is_accomplished {
+        let count = event
+            .get("local_kill_count")
+            .and_then(Value::as_i64)
+            .unwrap_or_default();
+        event.insert(
+            "local_kill_count".to_owned(),
+            Value::from(count.saturating_add(1)),
+        );
+    }
     get_or_create_object(event, "folder_played_party_list")?
         .insert(quest.quest_id.to_string(), party);
     Ok(())
@@ -248,9 +279,8 @@ fn apply_carnival_event(
     ) else {
         return Ok(Value::Null);
     };
-    let difficulty_bonus = difficulty.checked_mul(100).ok_or_else(|| {
-        PersonalServiceError::new("CN carnival difficulty score exceeds the supported range")
-    })?;
+    let difficulty_bonus = difficulty;
+    cn_activity::repair_carnival_records(root, event_id)?;
     let time_bonus = time_limit.saturating_sub(input.elapsed_time_ms).max(0);
     let total_score = difficulty_bonus.checked_add(time_bonus).ok_or_else(|| {
         PersonalServiceError::new("CN carnival score exceeds the supported range")
@@ -261,6 +291,10 @@ fn apply_carnival_event(
         .or_insert_with(|| Value::Array(Vec::new()))
         .as_array_mut()
         .ok_or_else(|| PersonalServiceError::new("stored CN carnival records are invalid"))?;
+    let previous_total_best_score = records
+        .iter()
+        .filter_map(|record| record.get("best_score").and_then(Value::as_i64))
+        .fold(0_i64, i64::saturating_add);
     let existing_index = records
         .iter()
         .position(|record| record.get("folder_id").and_then(Value::as_i64) == Some(folder_id));
@@ -285,7 +319,7 @@ fn apply_carnival_event(
         "is_record_valid": true,
         "leader_character_id": input.main_character_ids.first().copied().flatten().unwrap_or_default(),
         "new_degree_ids": [],
-        "previous_total_best_score": 0,
+        "previous_total_best_score": previous_total_best_score,
         "reward_ids": [],
         "score": {
             "difficulty_bonus": difficulty_bonus,

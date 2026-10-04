@@ -17,6 +17,7 @@ const ACTIVITY_VIEWS_JAVASCRIPT: &[u8] = include_bytes!("../web/management/activ
 const MAIL_REWARD_CONTROLLER_JAVASCRIPT: &[u8] =
     include_bytes!("../web/management/mail-reward-controller.js");
 const VIEWS_JAVASCRIPT: &[u8] = include_bytes!("../web/management/views.js");
+const DIALOGS_JAVASCRIPT: &[u8] = include_bytes!("../web/management/dialogs.js");
 const STYLESHEET: &[u8] = include_bytes!("../web/management/style.css");
 const ITEM_PLACEHOLDER: &[u8] = include_bytes!("../web/management/assets/item-placeholder.svg");
 const ITEM_ICON_PREFIX: &str = "/manage/assets/item-icons/";
@@ -91,6 +92,7 @@ pub(crate) fn route(request: &HttpRequest, cn_asset_root: &Path) -> Option<HttpR
     let content = match request.path() {
         "/manage" | "/manage/" => Some(("text/html; charset=utf-8", INDEX_HTML)),
         "/manage/app.js" => Some(("text/javascript; charset=utf-8", APP_JAVASCRIPT)),
+        "/manage/dialogs.js" => Some(("text/javascript; charset=utf-8", DIALOGS_JAVASCRIPT)),
         "/manage/ai-team-controller.js" => Some((
             "text/javascript; charset=utf-8",
             AI_TEAM_CONTROLLER_JAVASCRIPT,

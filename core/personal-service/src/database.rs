@@ -111,12 +111,35 @@ pub(crate) struct HttpObservation {
 }
 
 pub(crate) struct ServiceDatabase {
+    pub(crate) client_crashes: std::collections::VecDeque<serde_json::Value>,
     connection: Connection,
     management_token: String,
     multiplayer_session_port: u16,
 }
 
 impl ServiceDatabase {
+    // Mission updates, reward history and the battle receipt form one commit.
+    // Inner storage helpers use savepoints so any later failure rolls back all.
+    pub(crate) fn atomic_battle_settlement(
+        &mut self,
+        action: impl FnOnce(&mut Self) -> Result<crate::http::HttpResponse, PersonalServiceError>,
+    ) -> Result<crate::http::HttpResponse, PersonalServiceError> {
+        self.connection
+            .execute_batch("SAVEPOINT battle_settlement")
+            .map_err(database_error)?;
+        let result = action(self);
+        if result.as_ref().is_ok_and(|response| response.is_success()) {
+            self.connection
+                .execute_batch("RELEASE battle_settlement")
+                .map_err(database_error)?;
+        } else {
+            self.connection
+                .execute_batch("ROLLBACK TO battle_settlement; RELEASE battle_settlement")
+                .map_err(database_error)?;
+        }
+        result
+    }
+
     // //// 创建并迁移本地 SQLite 数据库 [@x380kkm 2026-07-22] ////
     pub(crate) fn open(root_path: &Path) -> Result<Self, PersonalServiceError> {
         fs::create_dir_all(root_path).map_err(|error| {
@@ -249,6 +272,7 @@ impl ServiceDatabase {
         gameplay_settings::migrate(&connection)?;
         let management_token = rotate_management_token(&connection)?;
         Ok(Self {
+            client_crashes: std::collections::VecDeque::new(),
             connection,
             management_token,
             multiplayer_session_port: 17_172,
@@ -906,7 +930,7 @@ impl ServiceDatabase {
         data: &str,
         response_json: &str,
     ) -> Result<(), PersonalServiceError> {
-        let transaction = self.connection.transaction().map_err(database_error)?;
+        let transaction = self.connection.savepoint().map_err(database_error)?;
         let updated = transaction
             .execute(
                 "UPDATE player_snapshots SET data_json = ?1 WHERE account_id = ?2",

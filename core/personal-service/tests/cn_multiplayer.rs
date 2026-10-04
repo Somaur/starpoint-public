@@ -874,6 +874,8 @@ fn handles_lobby_com_and_every_battle_frame_family() {
         .find(|progress| progress["quest_id"] == QUEST_ID)
         .expect("finished multiplayer quest progress is stored");
     assert_eq!(stored_progress["leader_character_id"], 231001);
+    assert_eq!(stored_progress["single_clear_count"], 0);
+    assert_eq!(stored_progress["multi_clear_count"], 1);
     let loaded_after_finish = send(
         &service,
         "/api/index.php/load",

@@ -5,6 +5,7 @@
 // 未配置日历的活动保持开放, 已配置活动按当前虚拟时间判断状态.
 
 mod carnival;
+pub(crate) use carnival::repair_legacy_scores as repair_carnival_records;
 mod party;
 mod raid;
 mod rush;
@@ -137,10 +138,11 @@ fn get_raid_boss(
         }
         Ok(_) | Err(_) => return Ok(error_response("400 Bad Request", "invalid_request_body")),
     };
-    match player_snapshot(database, body.viewer_id)? {
-        Ok(_) => {}
+    let snapshot = match player_snapshot(database, body.viewer_id)? {
+        Ok(snapshot) => snapshot,
         Err(response) => return Ok(response),
-    }
+    };
+    let player = crate::cn_tutorial::decode_player_data(&snapshot.data)?;
     let (hp_percentage, total_kill_count) = match body.event_id {
         Some(event_id) => {
             if let Some(response) =
@@ -149,7 +151,14 @@ fn get_raid_boss(
                 return Ok(response);
             }
             let state = database.raid_boss_state(event_id)?;
-            (state.hp_percentage, state.total_kill_count)
+            let local = player
+                .as_object()
+                .map(|root| raid::local_kill_count(root, event_id))
+                .unwrap_or_default();
+            (
+                state.hp_percentage,
+                state.total_kill_count.saturating_add(local),
+            )
         }
         None => (100, 0),
     };

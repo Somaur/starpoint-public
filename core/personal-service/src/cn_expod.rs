@@ -380,7 +380,7 @@ fn inject_exp(
         snapshot.account_id,
         character_level,
     )?;
-    let response = json!({
+    let mut response = json!({
         "add_exp_list": [{
             "character_id": body.character_id,
             "add_exp": after_exp.saturating_sub(current_exp),
@@ -397,6 +397,7 @@ fn inject_exp(
         "mail_arrived": false,
     });
     database.save_player_snapshot(snapshot.account_id, &encode_player_data(&player_data)?)?;
+    crate::cn_mission::sync_reward_response(&mut response, &player_data, server_time);
     msgpack_response_at(body.viewer_id, false, server_time, response)
 }
 

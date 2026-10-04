@@ -290,39 +290,6 @@ pub(crate) fn apply_score_rewards(
     })
 }
 
-pub(crate) fn apply_score_attack_border_reward(
-    root: &mut Map<String, Value>,
-    quest: &BattleQuest,
-    score: i64,
-    drop_multiplier: i64,
-    server_time: i64,
-) -> Result<RewardResult, PersonalServiceError> {
-    let Some(border) = quest
-        .score_attack_border_rewards
-        .iter()
-        .filter(|border| score >= border.score)
-        .max_by_key(|border| border.score)
-    else {
-        return Ok(RewardResult::default());
-    };
-    if border.coin_item_id <= 0 || border.coin_count <= 0 {
-        return Err(PersonalServiceError::new(
-            "CN score attack border reward is invalid",
-        ));
-    }
-    apply_drop_reward_at(
-        root,
-        &Reward {
-            kind: 0,
-            id: Some(border.coin_item_id),
-            count: Some(border.coin_count),
-            rarity: None,
-        },
-        drop_multiplier,
-        server_time,
-    )
-}
-
 fn is_item_drop_kind(reward_kind: i64) -> bool {
     matches!(reward_kind, 0 | 6 | 7)
 }

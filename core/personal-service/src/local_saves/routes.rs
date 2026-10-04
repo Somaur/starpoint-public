@@ -11,6 +11,9 @@ pub(super) fn route_authorized(
     database: &mut ServiceDatabase,
     prefix: &str,
 ) -> Result<HttpResponse, PersonalServiceError> {
+    if let Some(response) = maintenance::route(request, database, prefix) {
+        return response;
+    }
     if request.path() == LOCAL_SAVES_PATH {
         return match request.method() {
             "GET" => list_local_saves(database),

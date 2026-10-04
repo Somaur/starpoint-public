@@ -4,6 +4,9 @@
 // 该模块把活动管理开放规则投影到 CN 客户端 orderedmap. iOS 可写差分归档,
 // EntityLists 和 path 清单使用同一资源版本.
 
+mod gacha_banners;
+mod gacha_masters;
+mod shop_masters;
 mod ordered_map;
 mod projection_files;
 mod zip_archive;
@@ -31,7 +34,8 @@ const PROJECTION_ARCHIVE_PREFIX: &str = "starpoint-cn-activity-projection-";
 const COMMON_DIFF_DIRECTORY: &str = "archive-common-diff";
 const MILLIS_PER_HOUR: i64 = 3_600_000;
 const MILLIS_PER_DAY: i64 = 86_400_000;
-const MASTER_TIMEZONE_OFFSET_MS: i64 = 9 * MILLIS_PER_HOUR;
+// CN Android initializes the historically named JAPAN_STANDARD_OFFSET to UTC+8.
+const MASTER_TIMEZONE_OFFSET_MS: i64 = 8 * MILLIS_PER_HOUR;
 const WINDOW_PADDING_MS: i64 = 60_000;
 const AGGREGATION_DELAY_MS: i64 = 3 * MILLIS_PER_DAY;
 const REWARD_DELAY_MS: i64 = 10 * MILLIS_PER_DAY;
@@ -154,7 +158,8 @@ pub(crate) fn sync(
         return Ok(());
     }
 
-    let signature = projection_signature(&windows, &touched);
+    let banner_catalog = gacha_banners::read_catalog(asset_root)?;
+    let signature = projection_signature(&windows, &touched, &banner_catalog);
     if state.signature.as_deref() == Some(signature.as_str())
         && override_root.join("path").is_file()
         && state.archive_name.as_deref().is_some_and(|name| {
@@ -167,7 +172,9 @@ pub(crate) fn sync(
         return Ok(());
     }
 
-    let mut projected_entries = Vec::new();
+    let mut projected_entries = gacha_banners::client_entries(asset_root, &banner_catalog)?;
+    projected_entries.extend(gacha_masters::client_entries());
+    projected_entries.extend(shop_masters::client_entries());
     for master in &manifest.masters {
         if !touched.contains(&master.name) || !master_has_schedule(master) {
             continue;
@@ -305,9 +312,50 @@ fn active_windows(
             .entry(activity_id)
             .or_insert_with(|| projection_window(OPEN_RULE_START_MS, OPEN_RULE_END_MS, i64::MAX));
     }
+    inherit_box_windows(&mut windows, &configured_activity_ids)?;
     Ok(windows)
 }
 // //// /读取当前开放规则对应的虚拟活动窗口 ////
+
+// Event entry and every box stage have separate client time gates. Explicit
+// box schedules take precedence; otherwise their parent event opens them.
+fn inherit_box_windows(
+    windows: &mut BTreeMap<String, ProjectionWindow>,
+    configured: &BTreeSet<String>,
+) -> Result<(), PersonalServiceError> {
+    for (name, prefix, box_index) in [
+        ("raid_event", "raid:", 18),
+        ("world_story_event", "world-story:", 14),
+    ] {
+        let seed = master_seed(name)
+            .ok_or_else(|| PersonalServiceError::new("missing box parent master"))?;
+        let OrderedValue::Map(entries) =
+            decode_ordered_map(seed).map_err(PersonalServiceError::new)?
+        else {
+            continue;
+        };
+        for (id, value) in entries {
+            let OrderedValue::Row(row) = value else {
+                continue;
+            };
+            let Some(box_id) = row
+                .get(box_index)
+                .and_then(|id| id.parse::<i64>().ok())
+                .filter(|id| *id > 0)
+            else {
+                continue;
+            };
+            let box_key = format!("box-gacha:{box_id}");
+            if configured.contains(&box_key) {
+                continue;
+            }
+            if let Some(window) = windows.get(&format!("{prefix}{id}")).cloned() {
+                windows.entry(box_key).or_insert(window);
+            }
+        }
+    }
+    Ok(())
+}
 
 // //// 从活动 master seed 枚举长期活动 key [@x380kkm 2026-08-29] ////
 fn permanent_activity_ids() -> Result<BTreeSet<String>, PersonalServiceError> {
@@ -388,9 +436,61 @@ fn project_master_value(
             .map(|(_, value)| value),
         OrderedValue::Row(_) => None,
     };
-    target.is_some_and(|value| mutate_rows(value, master, window))
+    target.is_some_and(|value| {
+        if master.name == "tower_dungeon_event_quest" {
+            project_tower_season(value, master, window)
+        } else {
+            mutate_rows(value, master, window)
+        }
+    })
 }
 // //// /投影目标活动及关联关卡行 ////
+
+// TowerDungeonQuestSelectScene requires exactly ten battle quests. The seed
+// stores many monthly seasons under one event ID, so opening every row at once
+// makes the client throw C3092. Keep one complete season and retain other IDs
+// with an expired time interval, so historical save references remain valid.
+// The client constructs TimeRange even for inactive rows and rejects start > end.
+fn project_tower_season(
+    value: &mut OrderedValue,
+    master: &ProjectionMaster,
+    window: &ProjectionWindow,
+) -> bool {
+    let (Some(start), Some(end), OrderedValue::Map(entries)) =
+        (master.start_index, master.end_index, value)
+    else {
+        return false;
+    };
+    let seasons: BTreeSet<(String, String)> = entries
+        .iter()
+        .filter_map(|(_, value)| match value {
+            OrderedValue::Row(row) => Some((row.get(start)?.clone(), row.get(end)?.clone())),
+            _ => None,
+        })
+        .collect();
+    let reference = projected_time(TimeKind::Start, window);
+    let Some(selected) = seasons
+        .iter()
+        .rev()
+        .find(|(start, _)| start <= &reference)
+        .or_else(|| seasons.first())
+    else {
+        return false;
+    };
+    let closed = projection_window(
+        window.start_at_ms.saturating_sub(2_000),
+        window.start_at_ms.saturating_sub(1_000),
+        i64::MAX,
+    );
+    let mut changed = false;
+    for (_, value) in entries {
+        if let OrderedValue::Row(row) = value {
+            let active = row.get(start) == Some(&selected.0) && row.get(end) == Some(&selected.1);
+            changed |= mutate_row(row, master, if active { window } else { &closed });
+        }
+    }
+    changed
+}
 
 fn mutate_rows(
     value: &mut OrderedValue,
@@ -532,9 +632,16 @@ fn is_time_placeholder(value: &str) -> bool {
 fn projection_signature(
     windows: &BTreeMap<String, ProjectionWindow>,
     touched: &BTreeSet<String>,
+    banner_catalog: &[u8],
 ) -> String {
     let mut digest = Sha256::new();
     digest.update(PROJECTION_MANIFEST.as_bytes());
+    digest.update(b"cn-master-utc-plus-eight-v1\0");
+    digest.update(b"tower-single-season-v2\0");
+    digest.update(b"common-gacha-banners-v1\0");
+    digest.update(banner_catalog);
+    digest.update(gacha_masters::MANIFEST);
+    digest.update(shop_masters::MANIFEST);
     for name in touched {
         digest.update(name.as_bytes());
         digest.update([0]);
@@ -733,6 +840,7 @@ mod tests {
         OPEN_RULE_START_MS,
     };
     use crate::database::ServiceDatabase;
+    use std::collections::{BTreeMap, BTreeSet};
     use tempfile::TempDir;
 
     fn target_row<'a>(value: &'a OrderedValue, key: &str) -> Option<&'a Vec<String>> {
@@ -772,6 +880,128 @@ mod tests {
             collect_rows(value, &mut rows);
         }
         rows
+    }
+
+    #[test]
+    fn hard_multi_projection_preserves_quest_prerequisite_enum_fields() {
+        let manifest = projection_manifest().unwrap();
+        let master = manifest
+            .masters
+            .iter()
+            .find(|m| m.name == "hard_multi_event_quest")
+            .unwrap();
+        let mut value = super::decode_ordered_map(master_seed(&master.name).unwrap()).unwrap();
+        let before = rows_for_key(&value, "1")
+            .into_iter()
+            .cloned()
+            .collect::<Vec<_>>();
+        let window = projection_window(1_575_273_540_000, 1_575_360_000_000, i64::MAX);
+        assert!(project_master_value(&mut value, master, "1", &window));
+        for (before, after) in before.iter().zip(rows_for_key(&value, "1")) {
+            assert_eq!(after[5], projected_time(TimeKind::Start, &window));
+            assert_eq!(after[6], projected_time(TimeKind::End, &window));
+            for index in 0..before.len() {
+                if ![5, 6].contains(&index) {
+                    assert_eq!(before[index], after[index], "field {index}");
+                }
+            }
+            assert_eq!(
+                after[7], "7",
+                "quest reference kind must remain an enum, not a timestamp (C7050)"
+            );
+        }
+    }
+
+    #[test]
+    fn parent_event_opens_box_pool_and_every_stage_without_unlocking_dependencies() {
+        let window = projection_window(1_575_273_540_000, 1_575_360_000_000, i64::MAX);
+        let mut windows = BTreeMap::from([("raid:2".to_owned(), window.clone())]);
+        super::inherit_box_windows(&mut windows, &BTreeSet::new()).unwrap();
+        let inherited = windows
+            .get("box-gacha:19")
+            .expect("raid box pool inherits its parent");
+        assert_eq!(inherited.start_at_ms, window.start_at_ms);
+        let manifest = projection_manifest().unwrap();
+        for name in ["box_gacha", "box_gacha_box"] {
+            let master = manifest.masters.iter().find(|m| m.name == name).unwrap();
+            let mut value = super::decode_ordered_map(master_seed(name).unwrap()).unwrap();
+            let original = rows_for_key(&value, "19")
+                .into_iter()
+                .cloned()
+                .collect::<Vec<_>>();
+            assert!(project_master_value(&mut value, master, "19", inherited));
+            let rows = rows_for_key(&value, "19");
+            assert!(!rows.is_empty());
+            for (before, after) in original.iter().zip(rows) {
+                for i in 0..before.len() {
+                    if Some(i) == master.start_index {
+                        assert_eq!(after[i], projected_time(TimeKind::Start, inherited));
+                    } else if Some(i) == master.end_index {
+                        assert_eq!(after[i], projected_time(TimeKind::End, inherited));
+                    } else {
+                        assert_eq!(before[i], after[i]);
+                    }
+                }
+            }
+        }
+        let mut windows = BTreeMap::from([("raid:2".to_owned(), window)]);
+        super::inherit_box_windows(&mut windows, &BTreeSet::from(["box-gacha:19".to_owned()]))
+            .unwrap();
+        assert!(
+            !windows.contains_key("box-gacha:19"),
+            "explicit disabled box stays closed"
+        );
+    }
+
+    #[test]
+    fn tower_projection_keeps_one_complete_season_at_any_virtual_date() {
+        let manifest = projection_manifest().unwrap();
+        let master = manifest
+            .masters
+            .iter()
+            .find(|m| m.name == "tower_dungeon_event_quest")
+            .unwrap();
+        for now in [1_575_273_600_000, 1_704_067_200_000, 1_830_297_600_000] {
+            let mut value = super::decode_ordered_map(master_seed(&master.name).unwrap()).unwrap();
+            let original = rows_for_key(&value, "1")
+                .into_iter()
+                .cloned()
+                .collect::<Vec<_>>();
+            assert_eq!(original.len(), 480);
+            let window = projection_window(now - 60_000, now + 86_400_000, i64::MAX);
+            assert!(project_master_value(&mut value, master, "1", &window));
+            let rows = rows_for_key(&value, "1");
+            assert_eq!(rows.len(), original.len(), "preserve historical quest IDs");
+            let at = projected_time(TimeKind::Start, &projection_window(now, now, i64::MAX));
+            let active = rows
+                .iter()
+                .filter(|r| r[5] <= at && at <= r[6])
+                .collect::<Vec<_>>();
+            assert_eq!(active.len(), 10, "CN tower scene's C3092 invariant");
+            let source_periods = active
+                .iter()
+                .map(|row| {
+                    let seed = original.iter().find(|seed| seed[0] == row[0]).unwrap();
+                    (&seed[5], &seed[6])
+                })
+                .collect::<std::collections::BTreeSet<_>>();
+            assert_eq!(
+                source_periods.len(),
+                1,
+                "do not mix progress chains across seasons"
+            );
+            for (before, after) in original.iter().zip(rows) {
+                assert!(after[5] <= after[6], "CN TimeRange C2044 invariant");
+                if after[5] != projected_time(TimeKind::Start, &window) {
+                    assert!(after[6] < projected_time(TimeKind::Start, &window));
+                }
+                for i in 0..before.len() {
+                    if i != 5 && i != 6 {
+                        assert_eq!(before[i], after[i]);
+                    }
+                }
+            }
+        }
     }
 
     #[test]
@@ -836,6 +1066,24 @@ mod tests {
                 assert_eq!(row[*index], projected_time(*kind, &window));
             }
         }
+    }
+
+    #[test]
+    fn temporary_open_is_immediately_visible_to_cn_android_time_parser() {
+        let now = 1_575_273_600_000; // 2019-12-02 08:00:00 UTC.
+        let window = projection_window(now - 60_000, now + 86_400_000, i64::MAX);
+        let start = projected_time(TimeKind::Start, &window);
+        let end = projected_time(TimeKind::End, &window);
+        assert_eq!(start, "2019-12-02 15:59:00");
+        assert_eq!(end, "2019-12-03 16:00:00");
+        // Match ParseTools.makeUtc(...) minus the offset initialized by CN boot.
+        let client_parse = |value: String| {
+            crate::database::parse_iso_timestamp(&format!("{}.000Z", value.replace(' ', "T")))
+                .unwrap()
+                - 28_800_000
+        };
+        assert!(client_parse(start) <= now);
+        assert!(client_parse(end) > now);
     }
 
     #[test]

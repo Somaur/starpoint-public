@@ -49,7 +49,7 @@ function readJson(filePath) {
 function main() {
     const scriptDirectory = path.dirname(fileURLToPath(import.meta.url))
     const repositoryRoot = path.resolve(scriptDirectory, "..", "..")
-    const assetRoot = path.resolve(repositoryRoot, "..", "startpoint-cn", "assets")
+    const assetRoot = process.env.STARPOINT_ASSET_ROOT ?? path.resolve(repositoryRoot, "..", "startpoint-cn", "assets")
     const generatorPath = path.join(scriptDirectory, "generate-cn-single-battle-fixture.mjs")
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "starpoint-cn-battle-"))
 
@@ -74,7 +74,19 @@ function main() {
         }
 
         assert.equal(fixture.quests["26:1001"].linked_quest_id, 200014004)
-        assert.equal(fixture.quests["26:1001"].clear_reward, undefined)
+        assert.equal(fixture.quests["26:1001"].clear_reward_id, 34)
+        const android = readJson(path.join(repositoryRoot, "core/personal-service/assets/cn-battle-contract.json"))
+        for (const [key, contract] of Object.entries(android.quests)) {
+            for (const field of ["stamina_cost", "rank_point_reward", "character_exp_reward", "mana_reward", "pool_exp_reward"]) {
+                if (contract[field] !== undefined) assert.equal(fixture.quests[key][field], contract[field], `${key}.${field}`)
+            }
+            assert.equal(fixture.quests[key].clear_reward_id ?? null, contract.clear_reward_id, `${key}.clear_reward_id`)
+        }
+        assert.equal(fixture.quests["27:1155"].stamina_cost, 10)
+        assert.equal(fixture.quests["27:1155"].rank_point_reward, 10)
+        assert.equal(fixture.quests["27:1155"].clear_reward, undefined)
+        assert.equal(fixture.quests["25:1001"].stamina_cost, 10)
+        assert.equal(fixture.quests["25:1001"].rank_point_reward, 294)
         assert.equal(fixture.quests["27:1101"].score_attack_reward_group_id, 1)
         assert.equal(fixture.quests["27:1101"].score_reward_group_id, undefined)
         assert.deepEqual(
@@ -84,7 +96,7 @@ function main() {
                 difficulty: fixture.quests["22:1001"].carnival_difficulty_score,
                 timeLimit: fixture.quests["22:1001"].carnival_time_limit_ms,
             },
-            { event: 1, folder: 1, difficulty: 20, timeLimit: 108000 },
+            { event: 1, folder: 1, difficulty: 1000000, timeLimit: 1800000 },
         )
 
         const elementReward = Object.values(fixture.quests)

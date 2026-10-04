@@ -3,6 +3,8 @@
 //
 // 此模块把个人服务状态转换为安全 DOM 节点. 所有远端文本只写入 textContent.
 
+import { confirmAction, promptInput } from "/manage/dialogs.js"
+
 // //// 呈现服务器, 存档和同步操作 [@x380kkm 2026-07-24] ////
 function createElement(tagName, className, text) {
     const node = document.createElement(tagName)
@@ -157,7 +159,7 @@ function renderProfiles(model, elements, actions) {
         }
         if (!profile.is_builtin) {
             controls.append(createButton("删除", async () => {
-                if (!confirm(`删除服务器 ${profile.name}?`)) return undefined
+                if (!(await confirmAction(`删除服务器 ${profile.name}?`))) return undefined
                 await actions.requestApi(`/v1/server-profiles/${profile.id}`, { method: "DELETE" })
                 await actions.refreshManagementState()
                 return "服务器配置已删除."
@@ -184,7 +186,7 @@ function renderSyncTargets(model, elements, actions) {
         card.append(head)
         const controls = createElement("div", "card-actions")
         controls.append(createButton("删除", async () => {
-            if (!confirm(`删除存档服务器 ${target.name}? 本地存档不会删除.`)) return undefined
+            if (!(await confirmAction(`删除存档服务器 ${target.name}? 本地存档不会删除.`))) return undefined
             await actions.requestApi(`/v1/save-sync-targets/${target.id}`, { method: "DELETE" })
             await actions.refreshManagementState()
             return "存档服务器配置已删除."
@@ -210,6 +212,31 @@ function renderDevicePicker(model, elements) {
 
 function renderSaves(model, elements, actions) {
     elements.saveList.replaceChildren()
+    const maintenance = createElement("div", "save-actions")
+    const deletedList = createElement("div")
+    maintenance.append(createButton("新建新手档", async () => {
+        const name = (await promptInput("新存档名称", "新的冒险"))?.trim()
+        if (!name) return undefined
+        await actions.requestApi("/v1/local-saves/new", { method: "POST", body: { name } })
+        await actions.refreshManagementState()
+        return "新手档已创建：从序章与新手教学开始，没有预设通关记录。设为活动后重启游戏即可使用。"
+    }, actions.runAction))
+    maintenance.append(createButton("恢复已删除存档", async () => {
+        const { backups } = await actions.requestApi("/v1/local-saves/deleted")
+        deletedList.replaceChildren()
+        if (!backups.length) deletedList.append(createElement("p", "meta", "没有已删除存档。"))
+        for (const backup of backups) {
+            const row = createElement("div", "item-card")
+            row.append(createElement("p", "", `${backup.name} · ${formatTime(backup.deleted_at)}`))
+            row.append(createButton("恢复为独立存档", async () => {
+                await actions.requestApi(`/v1/local-saves/deleted/${backup.id}/restore`, { method: "POST" })
+                await actions.refreshManagementState()
+                return "游戏进度已恢复到独立存档。"
+            }, actions.runAction))
+            deletedList.append(row)
+        }
+    }, actions.runAction))
+    elements.saveList.append(maintenance, deletedList)
     if (model.saves.slots.length === 0) {
         elements.saveList.append(createElement("p", "empty-state", "客户端完成一次注册后会创建首个存档."))
         return
@@ -235,11 +262,64 @@ function renderSaves(model, elements, actions) {
             return undefined
         }, actions.runAction))
         card.append(controls, history)
+        appendResourceEditor(card, slot, actions)
         renderBindings(slot, model, card)
         renderTransferBindings(slot, model, card, actions)
         renderAutomation(slot, model, card, actions)
         elements.saveList.append(card)
     }
+}
+
+function appendResourceEditor(card, slot, actions) {
+    const details = createElement("details", "automation-card")
+    details.append(createElement("summary", "", "编辑本地资源"))
+    const fields = [["free_vmoney", "免费星导石"], ["vmoney", "付费星导石（本地数值）"],
+        ["free_mana", "玛纳"], ["exp_pool", "经验池"]]
+    const form = createElement("form", "stack-form")
+    form.append(createElement("p", "meta", "先退出战斗并关闭游戏。保存前自动创建快照，保存后重新打开游戏。"))
+    let original
+    const inputs = new Map()
+    for (const [key, label] of fields) {
+        const wrapper = createElement("label")
+        wrapper.append(createElement("span", "", label))
+        const input = createElement("input")
+        input.type = "number"; input.min = "0"; input.max = "99999999"; input.step = "1"
+        input.name = key; input.required = true; input.disabled = true
+        wrapper.append(input); form.append(wrapper); inputs.set(key, input)
+    }
+    const save = createElement("button", "button primary", "保存资源修改")
+    save.type = "submit"; save.disabled = true
+    const reload = createButton("读取当前数值", async () => {
+        original = await actions.requestApi(`/v1/local-saves/${slot.id}/editor`)
+        for (const [key, input] of inputs) { input.value = String(original.resources[key]); input.disabled = false }
+        save.disabled = false
+        return "已读取，修改后保存。"
+    }, actions.runAction)
+    form.append(reload, save)
+    form.addEventListener("submit", (event) => {
+        event.preventDefault()
+        actions.runAction(save, async () => {
+            if (!original) throw new Error("请先读取当前数值。")
+            const resources = Object.fromEntries([...inputs].map(([key, input]) => [key, Number(input.value)]))
+            if (Object.values(resources).some((n) => !Number.isInteger(n) || n < 0 || n > 99999999))
+                throw new Error("资源数量必须是 0 至 99999999 的整数。")
+            const changes = fields.filter(([key]) => resources[key] !== original.resources[key])
+            if (!changes.length) return "数值没有变化。"
+            const preview = changes.map(([key, label]) => `${label}：${original.resources[key]} → ${resources[key]}`).join("\n")
+            if (!(await confirmAction(`修改 ${slot.name}？\n${preview}\n将自动保存修改前快照。`))) return undefined
+            try {
+                await actions.requestApi(`/v1/local-saves/${slot.id}/resources`, {
+                    method: "PATCH", body: { expected_etag: original.etag, resources },
+                })
+            } catch (error) {
+                if (error.status === 409) throw new Error("存档已变化或仍在战斗中，请退出战斗并重新读取数值。")
+                throw error
+            }
+            await actions.refreshManagementState()
+            return "资源已保存，修改前快照可用于恢复。请重新打开游戏。"
+        })
+    })
+    details.append(form); card.append(details)
 }
 
 function renderAutomation(slot, model, card, actions) {
@@ -345,6 +425,17 @@ function renderAutomation(slot, model, card, actions) {
 }
 
 function appendSaveActions(controls, slot, model, elements, actions) {
+    const active = model.saves.devices.some((device) => device.active_slot_id === slot.id)
+    const remove = createButton("删除存档", async () => {
+        const state = await actions.requestApi(`/v1/local-saves/${slot.id}/editor`)
+        if (!(await confirmAction(`删除 ${slot.name}？\n当前游戏进度会保留恢复副本。历史快照、邮件箱和同步绑定会一并删除。`))) return undefined
+        await actions.requestApi(`/v1/local-saves/${slot.id}`, { method: "DELETE", body: { expected_etag: state.etag } })
+        await actions.refreshManagementState()
+        return "存档已删除，可从“恢复已删除存档”恢复游戏进度。"
+    }, actions.runAction, "danger")
+    remove.disabled = active
+    remove.title = active ? "请先为使用此档的设备切换到其他存档" : "删除并保留进度恢复副本"
+    controls.append(remove)
     controls.append(createButton("设为活动", async () => {
         const deviceId = Number(elements.deviceSelect.value)
         if (!Number.isInteger(deviceId) || deviceId <= 0) throw new Error("没有可操作的设备.")
@@ -356,14 +447,14 @@ function appendSaveActions(controls, slot, model, elements, actions) {
         return `设备 ${deviceId} 已切换存档.`
     }, actions.runAction))
     controls.append(createButton("复制", async () => {
-        const name = prompt("新存档名称", `${slot.name} 副本`)?.trim()
+        const name = (await promptInput("新存档名称", `${slot.name} 副本`))?.trim()
         if (!name) return undefined
         await actions.requestApi(`/v1/local-saves/${slot.id}/copy`, { method: "POST", body: { name } })
         await actions.refreshManagementState()
         return "存档副本已创建."
     }, actions.runAction))
     controls.append(createButton("创建快照", async () => {
-        const label = prompt("快照标签", "手动快照")?.trim()
+        const label = (await promptInput("快照标签", "手动快照"))?.trim()
         if (!label) return undefined
         await actions.requestApi(`/v1/local-saves/${slot.id}/snapshots`, { method: "POST", body: { label } })
         await actions.refreshManagementState()
@@ -390,7 +481,7 @@ function appendSaveActions(controls, slot, model, elements, actions) {
     fillTargetSelect(targetSelect, model.targets)
     controls.append(targetSelect)
     controls.append(createButton("上传备份", async () => {
-        const objectId = prompt("远端对象 ID", `slot-${slot.id}`)?.trim()
+        const objectId = (await promptInput("远端对象 ID", `slot-${slot.id}`))?.trim()
         if (!objectId) return undefined
         await actions.requestApi(`/v1/local-saves/${slot.id}/sync/upload`, {
             method: "POST",
@@ -406,15 +497,15 @@ function appendTransferBindingCreateAction(controls, slot, model, actions) {
     if (profiles.length === 0) return
     controls.append(createButton("创建槽位绑定", async () => {
         const choices = profiles.map((profile) => `${profile.id}: ${profile.name}`).join("\n")
-        const profileId = Number(prompt(`目标服务器配置 ID:\n${choices}`, String(profiles[0].id)))
+        const profileId = Number(await promptInput(`目标服务器配置 ID:\n${choices}`, String(profiles[0].id)))
         if (!profiles.some((profile) => profile.id === profileId)) throw new Error("服务器配置 ID 无效.")
-        const instanceKind = prompt("目标实例类型: remote 或 local", "remote")?.trim()
+        const instanceKind = (await promptInput("目标实例类型: remote 或 local", "remote"))?.trim()
         if (instanceKind !== "remote" && instanceKind !== "local") return undefined
-        const instanceId = prompt("目标实例 ID, 32 位小写十六进制")?.trim()
+        const instanceId = (await promptInput("目标实例 ID, 32 位小写十六进制"))?.trim()
         if (!instanceId) return undefined
-        const targetSlotId = Number(prompt("目标槽 ID")?.trim())
+        const targetSlotId = Number((await promptInput("目标槽 ID"))?.trim())
         if (!Number.isInteger(targetSlotId) || targetSlotId <= 0) return undefined
-        const targetToken = prompt("目标槽授权码, 需要双向权限")?.trim()
+        const targetToken = (await promptInput("目标槽授权码, 需要双向权限", "", { sensitive: true }))?.trim()
         if (!targetToken) return undefined
         await actions.requestApi(`/v1/local-saves/${slot.id}/transfer-bindings`, {
             method: "POST",
@@ -504,7 +595,7 @@ function renderTransferBindings(slot, model, card, actions) {
             return binding.enabled ? "自动传输已关闭." : "自动传输已启用."
         }, actions.runAction))
         controls.append(createButton("删除绑定", async () => {
-            if (!confirm("删除此传输绑定? 现有存档和 revision 不会删除.")) return undefined
+            if (!(await confirmAction("删除此传输绑定? 现有存档和 revision 不会删除."))) return undefined
             await actions.requestApi(`/v1/local-saves/${slot.id}/transfer-bindings/${binding.binding_id}`, {
                 method: "DELETE",
             })
@@ -528,7 +619,7 @@ function appendConflictActions(container, slot, binding, conflict, actions) {
     ]
     for (const [label, resolution] of resolutions) {
         controls.append(createButton(label, async () => {
-            if (!confirm(`${label}? 覆盖前会保留安全 revision.`)) return undefined
+            if (!(await confirmAction(`${label}? 覆盖前会保留安全 revision.`))) return undefined
             await actions.requestApi(
                 `/v1/local-saves/${slot.id}/transfer-bindings/${binding.binding_id}/conflicts/${conflict.conflict_id}/resolve`,
                 { method: "POST", body: { resolution } },
@@ -549,7 +640,7 @@ async function renderSnapshots(slot, container, actions) {
         const description = createElement("span")
         description.append(createElement("strong", "", snapshot.label), createElement("span", "meta", snapshot.created_at))
         item.append(description, createButton("回滚", async () => {
-            if (!confirm(`回滚到 ${snapshot.label}? 系统会先保存当前状态.`)) return undefined
+            if (!(await confirmAction(`回滚到 ${snapshot.label}? 系统会先保存当前状态.`))) return undefined
             await actions.requestApi(`/v1/local-saves/${slot.id}/snapshots/${snapshot.id}/restore`, { method: "POST" })
             await actions.refreshManagementState()
             return "存档已回滚, 回滚前状态已保存为安全快照."

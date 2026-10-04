@@ -1,0 +1,166 @@
+{
+  "main_quest": {
+    "stamina_cost": 69,
+    "rank_point_reward": 93,
+    "character_exp_reward": 94,
+    "mana_reward": 95,
+    "pool_exp_reward": 96,
+    "clear_reward_id": 3
+  },
+  "boss_battle_quest": {
+    "stamina_cost": 69,
+    "rank_point_reward": 93,
+    "character_exp_reward": 94,
+    "mana_reward": 95,
+    "pool_exp_reward": 96,
+    "clear_reward_id": 4
+  },
+  "character_quest": {
+    "stamina_cost": 71,
+    "rank_point_reward": 95,
+    "character_exp_reward": 96,
+    "mana_reward": 97,
+    "pool_exp_reward": 98,
+    "clear_reward_id": 5
+  },
+  "ex_quest": {
+    "stamina_cost": 69,
+    "rank_point_reward": 93,
+    "character_exp_reward": 94,
+    "mana_reward": 95,
+    "pool_exp_reward": 96,
+    "clear_reward_id": 3
+  },
+  "daily_week_event_quest": {
+    "stamina_cost": 64,
+    "rank_point_reward": 67,
+    "character_exp_reward": 68,
+    "mana_reward": 69,
+    "pool_exp_reward": 70,
+    "clear_reward_id": 3
+  },
+  "advent_event_quest": {
+    "stamina_cost": 75,
+    "rank_point_reward": 99,
+    "character_exp_reward": 100,
+    "mana_reward": 101,
+    "pool_exp_reward": 102,
+    "clear_reward_id": 4
+  },
+  "story_event_single_quest": {
+    "stamina_cost": 71,
+    "rank_point_reward": 95,
+    "character_exp_reward": 96,
+    "mana_reward": 97,
+    "pool_exp_reward": 98,
+    "clear_reward_id": 4
+  },
+  "ranking_event_single_quest": {
+    "stamina_cost": 66,
+    "clear_reward_id": 4
+  },
+  "challenge_dungeon_event_quest": {
+    "stamina_cost": 70,
+    "rank_point_reward": 94,
+    "character_exp_reward": 95,
+    "mana_reward": 96,
+    "pool_exp_reward": 97,
+    "clear_reward_id": 4
+  },
+  "daily_exp_mana_event_quest": {
+    "stamina_cost": 65,
+    "rank_point_reward": 68,
+    "character_exp_reward": 69,
+    "mana_reward": 70,
+    "pool_exp_reward": 71,
+    "clear_reward_id": 4
+  },
+  "practice_quest": {
+    "stamina_cost": 70,
+    "rank_point_reward": 94,
+    "character_exp_reward": 95,
+    "mana_reward": 96,
+    "pool_exp_reward": 97,
+    "clear_reward_id": 4
+  },
+  "world_story_event_quest": {
+    "stamina_cost": 70,
+    "rank_point_reward": 94,
+    "character_exp_reward": 95,
+    "mana_reward": 96,
+    "pool_exp_reward": 97,
+    "clear_reward_id": 4
+  },
+  "world_story_event_boss_battle_quest": {
+    "stamina_cost": 69,
+    "rank_point_reward": 93,
+    "character_exp_reward": 94,
+    "mana_reward": 95,
+    "pool_exp_reward": 96,
+    "clear_reward_id": 4
+  },
+  "tower_dungeon_event_quest": {
+    "stamina_cost": 68,
+    "rank_point_reward": 83,
+    "character_exp_reward": 84,
+    "mana_reward": 85,
+    "pool_exp_reward": 86,
+    "clear_reward_id": 4
+  },
+  "expert_single_event_quest": {
+    "stamina_cost": 72,
+    "rank_point_reward": 96,
+    "character_exp_reward": 97,
+    "mana_reward": 98,
+    "pool_exp_reward": 99,
+    "clear_reward_id": 6
+  },
+  "carnival_event_quest": {
+    "stamina_cost": 67,
+    "rank_point_reward": 82,
+    "character_exp_reward": 83,
+    "mana_reward": 84,
+    "pool_exp_reward": 85,
+    "clear_reward_id": 6
+  },
+  "raid_event_quest": {
+    "stamina_cost": 68,
+    "rank_point_reward": 83,
+    "character_exp_reward": 84,
+    "mana_reward": 85,
+    "pool_exp_reward": 86,
+    "clear_reward_id": 6
+  },
+  "rush_event_quest": {
+    "stamina_cost": 67,
+    "rank_point_reward": 82,
+    "character_exp_reward": 83,
+    "mana_reward": 84,
+    "pool_exp_reward": 85,
+    "clear_reward_id": 6
+  },
+  "solo_time_attack_event_quest": {
+    "stamina_cost": 70,
+    "rank_point_reward": 85,
+    "character_exp_reward": 86,
+    "mana_reward": 87,
+    "pool_exp_reward": 88,
+    "clear_reward_id": 5
+  },
+  "hard_multi_event_quest": {
+    "stamina_cost": 70,
+    "rank_point_reward": 94,
+    "character_exp_reward": 95,
+    "mana_reward": 96,
+    "pool_exp_reward": 97,
+    "clear_reward_id": 4
+  },
+  "score_attack_event_quest": {
+    "stamina_cost": 71,
+    "rank_point_reward": 86,
+    "character_exp_reward": 87,
+    "mana_reward": 88,
+    "pool_exp_reward": 89,
+    "clear_reward_id": 6
+  }
+}
