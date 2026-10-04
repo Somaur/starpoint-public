@@ -101,29 +101,59 @@ fn fresh_install_reads_packaged_comics_without_importing_player_state() {
         let dir = cdn.path().join(format!("local-comics/{kind}/2"));
         std::fs::create_dir_all(&dir).unwrap();
         for variant in ["base", "large", "small"] {
-            std::fs::write(dir.join(format!("{variant}.png")),
-                include_bytes!("../assets/cn-comic-fallback/0-small.png")).unwrap();
+            std::fs::write(
+                dir.join(format!("{variant}.png")),
+                include_bytes!("../assets/cn-comic-fallback/0-small.png"),
+            )
+            .unwrap();
         }
     }
-    let rows: Vec<_> = (0..=1).flat_map(|kind| (1..=2).map(move |episode|
-        json!({"kind":kind,"episode":episode,"title":"Bundled episode"}))).collect();
-    std::fs::write(cdn.path().join("local-comics/catalog.json"), serde_json::to_vec(&rows).unwrap()).unwrap();
+    let rows: Vec<_> = (0..=1)
+        .flat_map(|kind| {
+            (1..=2).map(
+                move |episode| json!({"kind":kind,"episode":episode,"title":"Bundled episode"}),
+            )
+        })
+        .collect();
+    std::fs::write(
+        cdn.path().join("local-comics/catalog.json"),
+        serde_json::to_vec(&rows).unwrap(),
+    )
+    .unwrap();
     let service = PersonalService::start_with_cdn_root(root.path(), 0, cdn.path()).unwrap();
     let port = service.port();
-    let viewer = decode_response::<SignupData>(&cn_support::send_request(port,
-        "/api/index.php/tool/signup", &encode_request(&SignupRequest { device_id: 873 })))
-        .data_headers.viewer_id;
+    let viewer = decode_response::<SignupData>(&cn_support::send_request(
+        port,
+        "/api/index.php/tool/signup",
+        &encode_request(&SignupRequest { device_id: 873 }),
+    ))
+    .data_headers
+    .viewer_id;
     assert_eq!(list(port, viewer, 0, 0)["total_count"], 2);
     assert_eq!(list(port, viewer, 1, 0)["total_count"], 2);
-    assert!(support::request_bytes(port, "GET", "/api/index.php/comic/image?kind=1&episode=2&variant=small")
-        .starts_with(b"HTTP/1.1 200 OK"));
+    assert!(support::request_bytes(
+        port,
+        "GET",
+        "/api/index.php/comic/image?kind=1&episode=2&variant=small"
+    )
+    .starts_with(b"HTTP/1.1 200 OK"));
     let imported = json!([
         {"kind":0,"episode":1,"title":"Imported"},
         {"kind":1,"episode":1,"title":"Imported"}
     ]);
-    assert!(put(port, "/v1/local-comics/catalog", &serde_json::to_vec(&imported).unwrap())
-        .starts_with("HTTP/1.1 200 OK"));
+    assert!(put(
+        port,
+        "/v1/local-comics/catalog",
+        &serde_json::to_vec(&imported).unwrap()
+    )
+    .starts_with("HTTP/1.1 200 OK"));
     assert_eq!(list(port, viewer, 0, 0)["total_count"], 1);
-    assert_eq!(serde_json::from_slice::<Value>(&std::fs::read(cdn.path().join("local-comics/catalog.json")).unwrap()).unwrap(), json!(rows));
+    assert_eq!(
+        serde_json::from_slice::<Value>(
+            &std::fs::read(cdn.path().join("local-comics/catalog.json")).unwrap()
+        )
+        .unwrap(),
+        json!(rows)
+    );
     service.stop().unwrap();
 }

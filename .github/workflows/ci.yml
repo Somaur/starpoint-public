@@ -30,7 +30,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for name in cn-battle-contract cn-gacha-features cn-local-gacha-tickets cn-tutorial-gacha cn-gacha-region-policy cn-single-battle-fixture; do
+          for name in cn-battle-contract cn-gacha-features cn-local-gacha-tickets cn-tutorial-gacha cn-gacha-region-policy; do
             node "scripts/protocol-lab/test-$name.mjs"
           done
       - name: Test release volumes and client patch

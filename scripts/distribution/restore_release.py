@@ -22,34 +22,40 @@ def restore(directory, release_url=None):
     temporary = output.with_suffix(output.suffix + ".partial")
     whole = hashlib.sha256()
     size = 0
-    with temporary.open("xb") as result:
-        for index, volume in enumerate(artifact["volumes"], 1):
-            if volume["index"] != index:
-                raise ValueError("Release volume order is invalid")
-            part = directory / volume["file"]
-            if not part.exists() and release_url:
-                print("Downloading", part.name, flush=True)
-                download = part.with_suffix(part.suffix + ".partial")
-                urllib.request.urlretrieve(release_url.rstrip("/") + "/" + part.name, download)
-                with download.open("rb") as source:
-                    sha = hashlib.file_digest(source, "sha256").hexdigest()
-                if download.stat().st_size != volume["bytes"] or sha != volume["sha256"]:
-                    raise ValueError(f"Download checksum mismatch: {part.name}")
-                download.replace(part)
-            sha = hashlib.sha256()
-            part_size = 0
-            with part.open("rb") as source:
-                for block in iter(lambda: source.read(4 * 1024 * 1024), b""):
-                    result.write(block)
-                    sha.update(block)
-                    whole.update(block)
-                    part_size += len(block)
-            if part_size != volume["bytes"] or sha.hexdigest() != volume["sha256"]:
-                raise ValueError(f"Volume checksum mismatch: {part.name}")
-            size += part_size
-            print("Verified", part.name, flush=True)
-    if size != artifact["bytes"] or whole.hexdigest() != artifact["sha256"]:
-        raise ValueError("Combined APK checksum mismatch")
+    if temporary.exists():
+        raise FileExistsError(f"Incomplete output already exists: {temporary}")
+    try:
+        with temporary.open("xb") as result:
+            for index, volume in enumerate(artifact["volumes"], 1):
+                if volume["index"] != index:
+                    raise ValueError("Release volume order is invalid")
+                part = directory / volume["file"]
+                if not part.exists() and release_url:
+                    print("Downloading", part.name, flush=True)
+                    download = part.with_suffix(part.suffix + ".partial")
+                    urllib.request.urlretrieve(release_url.rstrip("/") + "/" + part.name, download)
+                    with download.open("rb") as source:
+                        sha = hashlib.file_digest(source, "sha256").hexdigest()
+                    if download.stat().st_size != volume["bytes"] or sha != volume["sha256"]:
+                        raise ValueError(f"Download checksum mismatch: {part.name}")
+                    download.replace(part)
+                sha = hashlib.sha256()
+                part_size = 0
+                with part.open("rb") as source:
+                    for block in iter(lambda: source.read(4 * 1024 * 1024), b""):
+                        result.write(block)
+                        sha.update(block)
+                        whole.update(block)
+                        part_size += len(block)
+                if part_size != volume["bytes"] or sha.hexdigest() != volume["sha256"]:
+                    raise ValueError(f"Volume checksum mismatch: {part.name}")
+                size += part_size
+                print("Verified", part.name, flush=True)
+        if size != artifact["bytes"] or whole.hexdigest() != artifact["sha256"]:
+            raise ValueError("Combined APK checksum mismatch")
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
     temporary.replace(output)
     print("Ready:", output)
     return output
